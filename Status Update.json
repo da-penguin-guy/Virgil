@@ -1,0 +1,14 @@
+{
+    "sendingDevice": "SlaveDanteDeviceName",
+    "receivingDevice": "MasterDanteDeviceName",
+    "messages" :
+    [
+        {
+            "messageType" : "informationMessage",
+            "preampIndex" : 0,
+            "gain" : 1,
+            "lowcut" : 0,
+            "polarity" : false
+        }
+    ]
+}

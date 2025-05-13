@@ -1,0 +1,13 @@
+{
+    "sendingDevice": "MasterDanteDeviceName",
+    "receivingDevice": "SlaveDanteDeviceName",
+    "messages" :
+    [
+        {
+            "messageType" : "command",
+            "preampIndex" : 0,
+            "gain" : 1,
+            "lowcut" : 0
+        }
+    ]
+}

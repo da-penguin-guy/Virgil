@@ -1,0 +1,42 @@
+{
+    "sendingDevice": "SlaveDanteDeviceName",
+    "receivingDevice": "MasterDanteDeviceName",
+    "messages" :
+    [
+        {
+            "messageType" : "informationMessage",
+            "preampIndex" : 0,
+            "gain" :
+            {
+                "dataType" : "int",
+                "value" : 1,
+                "minValue" : -5,
+                "maxValue" : 50,
+                "locked" : false
+            },
+            "pad":
+            {
+                "dataType" : "bool",
+                "value" : false,
+                "padLevel" : -10,
+                "locked" : false
+            },
+            "lowcut":
+            {
+                "dataType" : "int",
+                "value" : 0,
+                "minValue" : 0,
+                "maxValue" : 100,
+                "locked" : false
+            },
+            "polarity":
+            {
+                "dataType" : "bool",
+                "value" : false,
+                "locked" : false
+            },
+            "level": "High-Z"
+        }
+    ]
+        
+}
