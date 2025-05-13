@@ -9,6 +9,7 @@
             "gain" :
             {
                 "dataType" : "int",
+                "precison" : 1,
                 "value" : 1,
                 "minValue" : -5,
                 "maxValue" : 50,
@@ -24,6 +25,7 @@
             "lowcut":
             {
                 "dataType" : "int",
+                "precison" : 1,
                 "value" : 0,
                 "minValue" : 0,
                 "maxValue" : 100,
@@ -35,7 +37,20 @@
                 "value" : false,
                 "locked" : false
             },
-            "level": "High-Z"
+            "level":
+            {
+                "dataType" : "enum",
+                "value" : "High-Z",
+                "options" : 
+                [
+                    "High-Z",
+                    "Mic",
+                    "Line",
+                    "Variable",
+                    "Disconnected"
+                ],
+                "locked" : true
+            }
         }
     ]
         

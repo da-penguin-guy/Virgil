@@ -6,8 +6,8 @@
         {
             "messageType" : "command",
             "preampIndex" : 0,
-            "gain" : 1,
-            "lowcut" : 0
+            "gain" : 15,
+            "lowcut" : 100
         }
     ]
 }

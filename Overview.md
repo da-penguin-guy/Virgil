@@ -13,6 +13,44 @@ This is used to have multicast IDs unique to each slave device. There is not a s
 There will also be a variable called "function" that will be either "master" "slave" or "both"  
 This is currently unused but may be displayed in a debug software.
 
+# Parameters
+There are currently several Parameters currently supported by Virgil. All Parameters are optional.
+
+## Gain
+Gain is the analog gain of the preamp.  
+Unit : dB
+Value Type : Int/Float
+This will often have a min and max value.  
+Precision: How precise the gain control is in dB (Int/Float).  
+Values not equal to 1 will be counted from the min value. 
+For example, if the precision is 3dB and the min value is -5dB, the avalable options are -5, -2, 1, 4, etc.
+This value can be locked if this device does not have variable gain or it has been disabled.
+The gain value should be independent of the pad
+
+## Pad
+Pad is an optional attenuator.
+Value : Bool
+Pad Level: The amount in dB that the pad effects the gain. This will most often be negative (Int/Float).
+A pad should not be locked unless it has been disabled. If a device does not have a Pad, do not include the Pad Parameter.
+
+## LowCut
+LowCut is a control of a low cut/HPF
+Unit : hertz
+Value Type : Int/Float
+Precision: How precise the gain control is in hz (Int/Float).  
+Look at gain for more information of precision
+A LowCut should not be locked unless it has been disabled. If a device does not have a Low Cut, do not include the Parameter.
+
+## Polarity
+Polarity, if true, inverts the signal.
+Value Type : bool
+Polarity should not be locked unless it has been disabled. If a device does not have a Low Cut, do not include the Parameter.
+
+## Level
+The expected level of the signal coming into the preamp
+Value Type : String Enum (A string with specified values)
+
+
 # Commands
 Commands are typically sent from a master device (mixer, computer, etc.) to a slave device (Digital stagebox, Preamp, etc.)  
 Commands only contain the information being updated in the slave device.  
@@ -22,8 +60,10 @@ Commands are sent using TCP to ensure no packets are dropped.
 # Status Updates
 Status updates are sent from a slave device to all subscribed master devices whenever a property in a preamp is updated.  
 Status updates contain all information for the preamp the change was made to.  
+This only includes the values for the parameters. If other data changes, such as if a parameter's min value has changed, that should also be sent.
 For example, if a mixer changes the gain on preamp 5 on a digital stagebox, a status update will be sent with all information for preamp 5.  
 Status updates are multicast.
+
 
 # Info Message
 Info Messages are similar to status updates, with a few key differences.  
