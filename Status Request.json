@@ -1,0 +1,19 @@
+{
+    "sendingDevice": "MasterDanteDeviceName",
+    "recivingDevice": "SlaveDanteDeviceName",
+    "messages" :
+    [
+        {
+            "messageType" : "statusRequest",
+            "preampIndex" : 0
+        },
+        {
+            "messageType" : "statusRequest",
+            "preampIndex" : 1
+        },
+        {
+            "messageType" : "statusRequest",
+            "preampIndex" : 2
+        }
+    ]
+}

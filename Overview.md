@@ -49,16 +49,18 @@ Polarity should not be locked unless it has been disabled. If a device does not 
 # Formatting Overview
 All Messages will be JSON files.  
 
-Messages also have 2 strings dictating the routing for the packet. This is to help devices with routing.
-' "sendingDevice" ' Is a string stating the dante name of the device sending the message.  
-All messages should have this unless the device is not Dante, such as a  computer running controller software.
-' "recivingDevice" ' Is a string stating the dante name of the device reciveing the message.  
-All messages should have this unless they are multicast, such as Status Updates
+Messages also have 2 strings dictating the routing for the packet. This is to help devices with routing.  
 
-' "messages" ' is an array containing all of the messages being sent.  
-Several messages can be sent at once.
+` "sendingDevice" ` Is a string stating the dante name of the device sending the message.  
+All messages should have this unless the device is not Dante, such as a  computer running controller software.  
 
-The first line of all messages should be  ' "messageType" '
+` "recivingDevice" ` Is a string stating the dante name of the device reciveing the message.  
+All messages should have this unless they are multicast, such as Status Updates  
+
+` "messages" ` is an array containing all of the messages being sent.  
+Several messages can be sent at once.  
+
+The first line of all messages should be  ` "messageType" `
 
 # Commands
 Commands are typically sent from a master device (mixer, computer, etc.) to a slave device (Digital stagebox, Preamp, etc.)  
@@ -96,6 +98,7 @@ Currently, the error values are:
 - ValueOutOfRange
 - InvalidValueType
 - UnableToChangeValue
+- Custom
 
 Error Strings are text strings that should be shown to the end user. These do not have specified values.
 

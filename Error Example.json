@@ -1,0 +1,12 @@
+{
+    "sendingDevice": "SlaveDanteDeviceName",
+    "receivingDevice": "MasterDanteDeviceName",
+    "messages" :
+    [
+        {
+            "messageType" : "errorMessage",
+            "errorValue" : "valueOutOfRange",
+            "errorString" : "-67dB is out of the gain range of -5dB to 50dB"
+        }
+    ]
+}
