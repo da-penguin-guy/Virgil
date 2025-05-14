@@ -36,20 +36,6 @@
                 "dataType" : "bool",
                 "value" : false,
                 "locked" : false
-            },
-            "level":
-            {
-                "dataType" : "enum",
-                "value" : "High-Z",
-                "options" : 
-                [
-                    "High-Z",
-                    "Mic",
-                    "Line",
-                    "Variable",
-                    "Disconnected"
-                ],
-                "locked" : true
             }
         }
     ]

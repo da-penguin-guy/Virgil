@@ -46,16 +46,27 @@ Polarity, if true, inverts the signal.
 Value Type : bool
 Polarity should not be locked unless it has been disabled. If a device does not have a Low Cut, do not include the Parameter.
 
-## Level
-The expected level of the signal coming into the preamp
-Value Type : String Enum (A string with specified values)
+# Formatting Overview
+All Messages will be JSON files.  
 
+Messages also have 2 strings dictating the routing for the packet. This is to help devices with routing.
+' "sendingDevice" ' Is a string stating the dante name of the device sending the message.  
+All messages should have this unless the device is not Dante, such as a  computer running controller software.
+' "recivingDevice" ' Is a string stating the dante name of the device reciveing the message.  
+All messages should have this unless they are multicast, such as Status Updates
+
+' "messages" ' is an array containing all of the messages being sent.  
+Several messages can be sent at once.
+
+The first line of all messages should be  ' "messageType" '
 
 # Commands
 Commands are typically sent from a master device (mixer, computer, etc.) to a slave device (Digital stagebox, Preamp, etc.)  
 Commands only contain the information being updated in the slave device.  
 For example, a mixer changing a stagebox's gain would only contain the gain value for one preamp, instead of containing pad, phantom power, etc.  
 Commands are sent using TCP to ensure no packets are dropped.  
+
+Look at the example JSON or the python script for more specific information.
 
 # Status Updates
 Status updates are sent from a slave device to all subscribed master devices whenever a property in a preamp is updated.  
@@ -64,6 +75,7 @@ This only includes the values for the parameters. If other data changes, such as
 For example, if a mixer changes the gain on preamp 5 on a digital stagebox, a status update will be sent with all information for preamp 5.  
 Status updates are multicast.
 
+Look at the example JSON or the python script for more specific information.
 
 # Info Message
 Info Messages are similar to status updates, with a few key differences.  
@@ -71,6 +83,8 @@ Info messages are requested via an Info Request and sent to a single master devi
 They are also able to give data on all slave preamps, if requested to.  
 Info Messages are communicate the capabilities of each preamp, such as gain ranges, precision, etc. 
 Info Messages are sent via TCP.
+
+Look at the example JSON or the python script for more specific information.
 
 # Error Message
 Error Messages are sent whenever a command was unable to be processed.  
@@ -85,7 +99,11 @@ Currently, the error values are:
 
 Error Strings are text strings that should be shown to the end user. These do not have specified values.
 
+Look at the example JSON or the python script for more specific information.
+
 # Info Requests
 Info requests are sent from a master to a slave to request an Info Message.  
 They contain an array of the preamp indecies that should be sent.
 Info Messages, once requested, are sent to the IP address that requested it.
+
+Look at the example JSON or the python script for more specific information.
