@@ -7,44 +7,74 @@ The virgil port is 7889.
 The service type will be "_virgil._udp.local."
 The service name will be the "{dante name}.{service type}"
 The service port will be 7889.
-Before advertising over mDNS, all slave devices must first scan for virgil devices and choose a unique muticast address.
+Before advertising over mDNS, all slave devices must first scan for virgil devices and choose a unique multicast address.
 In the txt, there will be a multicast address without the last number, eg. 244.1.1  
 This is used to have multicast IDs unique to each slave device. There is not a specified way to determine the multicast ID. You can do the lowest number, a random link local approach, or something else. 
 There will also be a variable called "function" that will be either "master" "slave" or "both"  
 This is currently unused but may be displayed in a debug software.
 
 # Parameters
-There are currently several Parameters currently supported by Virgil. All Parameters are optional.
+There are currently several Parameters currently supported by Virgil.  
+The only mandatory parameter is gain. If a slave device supports a feature that has been disabled, include the corresponding parameter and lock it.  
+Only the value of a parameter can be changed by a master device, not precision, min value, etc.  
+
+Note : If a value type is percentage, the actual type is an int from 0 to 100, the string should be "%", precision is always 1, min value is always 0, and max value is always 100
+
+Note : For precision, Values not equal to 1 will be counted from the min value. 
+For example, if the precision is 3dB and the min value is -5dB, the available options are -5, -2, 1, 4, etc.
 
 ## Gain
-Gain is the analog gain of the preamp.  
-Unit : dB
-Value Type : Int/Float
-This will often have a min and max value.  
-Precision: How precise the gain control is in dB (Int/Float).  
-Values not equal to 1 will be counted from the min value. 
-For example, if the precision is 3dB and the min value is -5dB, the avalable options are -5, -2, 1, 4, etc.
-This value can be locked if this device does not have variable gain or it has been disabled.
-The gain value should be independent of the pad
+"gain"  
+Gain is the analog gain of the preamp (Ignoring pad).  
+Unit : dB  
+Value Type : Int/Float  
+Min : The minimum gain (Ignoring pad)  
+Precision : How precise the gain control is in dB (Int/Float).  
+This value can be locked if this device does not have variable gain or has been disabled.  
+The gain value should be independent of the pad, and the master device should change the visual output to the user.
 
 ## Pad
-Pad is an optional attenuator.
-Value : Bool
+"pad"  
+Pad is an optional attenuator.  
+Value Type: bool  
 Pad Level: The amount in dB that the pad effects the gain. This will most often be negative (Int/Float).
-A pad should not be locked unless it has been disabled. If a device does not have a Pad, do not include the Pad Parameter.
 
 ## LowCut
-LowCut is a control of a low cut/HPF
-Unit : hertz
-Value Type : Int/Float
-Precision: How precise the gain control is in hz (Int/Float).  
-Look at gain for more information of precision
-A LowCut should not be locked unless it has been disabled. If a device does not have a Low Cut, do not include the Parameter.
+"lowcut"  
+LowCut is a control of a low cut/HPF  
+Unit : Hz  
+Value Type : Int  
+Precision: How precise the gain control is in hz (Int).  
 
 ## Polarity
-Polarity, if true, inverts the signal.
+"polarity"  
+Polarity, if true, inverts the signal.  
 Value Type : bool
-Polarity should not be locked unless it has been disabled. If a device does not have a Low Cut, do not include the Parameter.
+
+## Phantom Power
+"phantomPower"  
+Enables Phantom Power.
+Value Type : bool
+
+## RF Power
+"rfPower"  
+The RF level of a connected RF receiver. Useful for dante connected mic receivers.  
+Unit : dB/Percent  
+Value Type : int(dB)/int(Percent, 0-100)  
+This value is read-only, and should always be locked
+
+## RF Enable
+"rfEnable"  
+An enable/disable switch for a connected RF transmitter.  
+Value Type : bool
+
+## Battery Level
+"batteryLevel"  
+The detected battery level of the end device. Useful for dante connected mic receivers.  
+Unit : Percent  
+Value Type : int(0-100)
+This value is read-only, and should always be locked
+
 
 # Formatting Overview
 All Messages will be JSON files.  
@@ -54,7 +84,7 @@ Messages also have 2 strings dictating the routing for the packet. This is to he
 ` "sendingDevice" ` Is a string stating the dante name of the device sending the message.  
 All messages should have this unless the device is not Dante, such as a  computer running controller software.  
 
-` "recivingDevice" ` Is a string stating the dante name of the device reciveing the message.  
+` "receivingDevice" ` Is a string stating the dante name of the device receiving the message.  
 All messages should have this unless they are multicast, such as Status Updates  
 
 ` "messages" ` is an array containing all of the messages being sent.  
@@ -106,7 +136,7 @@ Look at the example JSON or the python script for more specific information.
 
 # Info Requests
 Info requests are sent from a master to a slave to request an Info Message.  
-They contain an array of the preamp indecies that should be sent.
+They contain an array of the preamp indices that should be sent.
 Info Messages, once requested, are sent to the IP address that requested it.
 
 Look at the example JSON or the python script for more specific information.

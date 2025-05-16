@@ -9,7 +9,8 @@
             "gain" :
             {
                 "dataType" : "int",
-                "precison" : 1,
+                "unit" : "dB",
+                "precision" : 1,
                 "value" : 1,
                 "minValue" : -5,
                 "maxValue" : 50,
@@ -25,7 +26,8 @@
             "lowcut":
             {
                 "dataType" : "int",
-                "precison" : 1,
+                "unit" : "Hz",
+                "precision" : 1,
                 "value" : 0,
                 "minValue" : 0,
                 "maxValue" : 100,
@@ -36,6 +38,13 @@
                 "dataType" : "bool",
                 "value" : false,
                 "locked" : false
+            },
+            "rfPower":
+            {
+                "dataType" : "int",
+                "unit" : "%",
+                "value" : 0,
+                "locked" : true
             }
         }
     ]
