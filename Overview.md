@@ -98,7 +98,7 @@ Commands only contain the information being updated in the slave device.
 For example, a mixer changing a stagebox's gain would only contain the gain value for one preamp, instead of containing pad, phantom power, etc.  
 Commands are sent using TCP to ensure no packets are dropped.  
 
-Look at the example JSON or the python script for more specific information.
+Look at the example JSON or the example scripts for more specific information.
 
 # Status Updates
 Status updates are sent from a slave device to all subscribed master devices whenever a property in a preamp is updated.  
@@ -107,7 +107,7 @@ This only includes the values for the parameters. If other data changes, such as
 For example, if a mixer changes the gain on preamp 5 on a digital stagebox, a status update will be sent with all information for preamp 5.  
 Status updates are multicast.
 
-Look at the example JSON or the python script for more specific information.
+Look at the example JSON or the example scripts for more specific information.
 
 # Info Message
 Info Messages are similar to status updates, with a few key differences.  
@@ -116,7 +116,7 @@ They are also able to give data on all slave preamps, if requested to.
 Info Messages are communicate the capabilities of each preamp, such as gain ranges, precision, etc. 
 Info Messages are sent via TCP.
 
-Look at the example JSON or the python script for more specific information.
+Look at the example JSON or the example scripts for more specific information.
 
 # Error Message
 Error Messages are sent whenever a command was unable to be processed.  
@@ -132,11 +132,11 @@ Currently, the error values are:
 
 Error Strings are text strings that should be shown to the end user. These do not have specified values.
 
-Look at the example JSON or the python script for more specific information.
+Look at the example JSON or the example scripts for more specific information.
 
 # Info Requests
 Info requests are sent from a master to a slave to request an Info Message.  
 They contain an array of the preamp indices that should be sent.
 Info Messages, once requested, are sent to the IP address that requested it.
 
-Look at the example JSON or the python script for more specific information.
+Look at the example JSON or the example scripts for more specific information.
