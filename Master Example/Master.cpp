@@ -1,245 +1,437 @@
 #include <iostream>
-#include <nlohmann/json.hpp>
-#include <winsock2.h>
+#include <cstring>
 #include <string>
-#include <cstdlib>
-#include <ctime>
-#include <ws2tcpip.h>
+#include <atomic>
+#include <thread>
+#include <chrono>
+#include <functional>
 
-#define MDNS_ADDRESS "224.0.0.251"
-#define MDNS_PORT 5353
-#define SERVICE_PORT 7889
-#define BASE_MULTICAST_ADDR "244.1.1"
-#pragma comment(lib, "ws2_32.lib")
+// Include nlohmann/json (single header library)
+// Download from: https://github.com/nlohmann/json/releases
+#include "nlohmann/json.hpp"
+
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h> 
+    #pragma comment(lib, "ws2_32.lib")
+    typedef SOCKET socket_t;
+    #ifndef IP_MULTICAST_TTL
+        #define IP_MULTICAST_TTL 3
+    #endif
+#else
+    #include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    typedef int socket_t;
+#endif
 
 using json = nlohmann::json;
+using namespace std;
 
-WSADATA InitWSA()
+atomic<bool> mdns_running{false};
+thread mdns_thread;
+
+atomic<bool> net_listener_running{false};
+thread net_listener_thread;
+
+// This function will be called with received data and sender info
+using PacketHandler = std::function<void(const std::string&, const sockaddr_in&)>;
+
+int virgilPort = 7889;
+
+
+socket_t CreateSocket(int type, int port, sockaddr_in& addr) 
 {
-    WSADATA wsaData;
-    int wsa_result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (wsa_result != 0) {
-        std::cerr << "WSAStartup failed: " << wsa_result << "\n";
+    socket_t sock = socket(AF_INET, type, 0);
+    if (sock < 0) 
+    {
+        cerr << "Socket creation failed.\n";
     }
-    return WSADATA
-}
-
-SOCKET createSocket(const std::string& ip, uint16_t port, int protocol) {
-    // Initialize Winsock
-    WSADATA wsaData;
-    int wsa_result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (wsa_result != 0) {
-        std::cerr << "WSAStartup failed: " << wsa_result << "\n";
-        return INVALID_SOCKET;
-    }
-
-    SOCKET sockfd = INVALID_SOCKET;
-    int socket_type = 0;
-    
-    if (protocol == IPPROTO_UDP) {
-        socket_type = SOCK_DGRAM;
-    } else if (protocol == IPPROTO_TCP) {
-        socket_type = SOCK_STREAM;
-    } else {
-        std::cerr << "Unsupported protocol: " << protocol << std::endl;
-        WSACleanup();
-        return INVALID_SOCKET;
-    }
-
-    // Create the socket based on the protocol
-    sockfd = socket(AF_INET, socket_type, protocol_type);
-    if (sockfd == INVALID_SOCKET) {
-        std::cerr << "Socket creation failed!" << std::endl;
-        WSACleanup();
-        return INVALID_SOCKET;
-    }
-
-    // Set up the sockaddr_in structure to bind the socket
-    struct sockaddr_in addr;
+    sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);  // Convert port to network byte order
-    addr.sin_addr.s_addr = inet_addr(ip.c_str());  // Convert IP to network byte order
-
-    // Bind the socket to the specified IP and port
-    if (bind(sockfd, (struct sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
-        std::cerr << "Bind failed!" << std::endl;
-        closesocket(sockfd);
-        WSACleanup();
-        return INVALID_SOCKET;
-    }
-
-    std::cout << "Socket created and bound to " << ip << ":" << port << " using " << protocol << " protocol." << std::endl;
-
-    return sockfd;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+    int opt = 1;
+    #ifdef _WIN32
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+    #else
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    #endif
+    return sock;
 }
 
-void sendTcpJsonMessage(const char* server_ip, int server_port, const json& json_message) {
-    // Set up the server address
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(server_port);
-    server_addr.sin_addr.s_addr = inet_addr(server_ip);
-
-    // Connect to the server
-    if (connect(sock, (SOCKADDR*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
-        std::cerr << "Connection failed.\n";
+void CloseSocket(socket_t& sock) 
+{
+    #ifdef _WIN32
         closesocket(sock);
-        WSACleanup();
+    #else   
+        close(sock);
+    #endif
+}
+
+void AdvertiseMDNS(const string& danteName, const string& function, const string& multicastBase = "")
+{
+    const char* mdns_ip = "224.0.0.251";
+    int mdns_port = 5353;
+
+    string serviceType = "_virgil._udp.local.";
+
+    json mdns_advert;
+    mdns_advert["serviceName"] = danteName + "." + serviceType;
+    mdns_advert["serviceType"] = serviceType;
+    mdns_advert["port"] = virgilPort;
+    if(multicastBase.empty() && function == "slave") 
+    {
+        cerr << "Slaves must have a multicast base\n";
+        return;
+    }
+    else if(function == "slave")
+    {
+        mdns_advert["txt"]["multicast"] = multicastBase;
+    }
+    mdns_advert["txt"]["function"] = function;
+
+    sockaddr_in addr;
+    socket_t sock = CreateSocket(SOCK_DGRAM, mdns_port, addr);
+
+    string payload = mdns_advert.dump();
+
+    while (mdns_running) {
+        int res = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
+        if (res < 0) {
+            cerr << "mDNS advertisement failed.\n";
+        }
+        this_thread::sleep_for(chrono::seconds(1));
+    }
+
+    CloseSocket(sock);
+}
+
+vector<pair<string, sockaddr_in>> ReadMDNS()
+{
+    const char* mdns_ip = "224.0.0.251";
+    int mdns_port = 5353;
+
+    vector<pair<string, sockaddr_in>> results;
+
+    sockaddr_in addr;
+    socket_t sock = CreateSocket(SOCK_DGRAM, mdns_port, addr);
+    if (sock < 0) 
+    {
+        cerr << "mDNS read socket creation failed.\n";
+        return results;
+    }
+
+    if (::bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) 
+    {
+        cerr << "mDNS bind failed.\n";
+        CloseSocket(sock);
+        return results;
+    }
+
+    // Join mDNS multicast group
+    ip_mreq mreq;
+    mreq.imr_multiaddr.s_addr = inet_addr(mdns_ip);
+    mreq.imr_interface.s_addr = INADDR_ANY;
+    setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&mreq, sizeof(mreq));
+
+    char buffer[4096];
+    auto start = chrono::steady_clock::now();
+    while (chrono::steady_clock::now() - start < chrono::seconds(5)) {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(sock, &readfds);
+        timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 500000; // 0.5 second
+
+        int ready = select(sock + 1, &readfds, nullptr, nullptr, &timeout);
+        if (ready > 0 && FD_ISSET(sock, &readfds)) {
+            sockaddr_in src_addr;
+            #ifdef _WIN32
+                int addrlen = sizeof(src_addr);
+            #else
+                socklen_t addrlen = sizeof(src_addr);
+            #endif
+                int len = recvfrom(sock, buffer, sizeof(buffer) - 1, 0, (sockaddr*)&src_addr, &addrlen);
+            if (len > 0) {
+                buffer[len] = '\0';
+                results.emplace_back(std::string(buffer, len), src_addr);
+            }
+        }
+    }
+
+    CloseSocket(sock);
+    return results;
+}
+
+void StartMDNS(const string& danteName, const string& function, const string& multicastBase = "") 
+{
+    mdns_running = true;
+    mdns_thread = std::thread(AdvertiseMDNS, danteName, function, virgilPort, multicastBase);
+}
+
+void StopMDNS() 
+{
+    mdns_running = false;
+    if (mdns_thread.joinable()) {
+        mdns_thread.join();
+    }
+}
+
+bool SendTCP(const string& ip, int port, json message)
+{
+    sockaddr_in addr;
+    socket_t sock = CreateSocket(SOCK_STREAM, port, addr);
+
+    // Set the destination IP address
+    addr.sin_addr.s_addr = inet_addr(ip.c_str());
+
+    if (connect(sock, (sockaddr*)&addr, sizeof(addr)) < 0) 
+    {
+        cerr << "TCP connect failed.\n";
+        CloseSocket(sock);
+        return false;
+    }
+    std::string messageDump = message.dump();
+    int send_result = send(sock, messageDump.c_str(), messageDump.size(), 0);
+    if (send_result < 0) 
+    {
+        cerr << "TCP send failed.\n";
+        CloseSocket(sock);
+        return false;
+    }
+
+    CloseSocket(sock);
+    return true;
+}
+
+bool SendMulticast(const string& multicast_ip, int port, const json& message) 
+{
+    sockaddr_in addr;
+    socket_t sock = CreateSocket(SOCK_DGRAM, port, addr);
+
+    // Set the destination multicast IP
+    addr.sin_addr.s_addr = inet_addr(multicast_ip.c_str());
+
+    std::string messageDump = message.dump();
+    int send_result = sendto(sock, messageDump.c_str(), messageDump.size(), 0, (sockaddr*)&addr, sizeof(addr));
+    if (send_result < 0) 
+    {
+        cerr << "Multicast send failed.\n";
+        CloseSocket(sock);
+        return false;
+    }
+
+    CloseSocket(sock);
+    return true;
+}
+
+void NetListener(int port, const vector<string> multicast_ips, PacketHandler handler)
+{
+    sockaddr_in tcp_addr;
+    socket_t tcp_sock = CreateSocket(SOCK_STREAM, port,tcp_addr);
+
+    if (::bind(tcp_sock, (sockaddr*)&tcp_addr, sizeof(tcp_addr)) < 0) 
+    {
+        cerr << "TCP bind failed.\n";
+        CloseSocket(tcp_sock);
+        return;
+    }
+    listen(tcp_sock, 5);
+
+    // --- Multicast UDP socket setup ---
+    sockaddr_in udp_addr;
+    socket_t udp_sock = CreateSocket(SOCK_DGRAM, port, udp_addr);
+
+    if (::bind(udp_sock, (sockaddr*)&udp_addr, sizeof(udp_addr)) < 0) 
+    {
+        cerr << "UDP bind failed.\n";
+        CloseSocket(udp_sock);
+        CloseSocket(tcp_sock);
         return;
     }
 
-    // Convert the JSON message to a string and send it
-    std::string message = json_message.dump();
-    size_t message_len = message.size();
-    
-    int send_result = send(sock, message.c_str(), static_cast<int>(message_len), 0);
-    if (send_result == SOCKET_ERROR) {
-        std::cerr << "Send failed.\n";
-    } else {
-        std::cout << "Sent JSON message: " << message << "\n";
-    }
-
-    // Cleanup
-    closesocket(sock);
-    WSACleanup();
-}
-
-void sendMdnsQuery(SOCKET sockfd, const std::string& query) {
-    struct sockaddr_in multicastAddr;
-    memset(&multicastAddr, 0, sizeof(multicastAddr));
-    multicastAddr.sin_family = AF_INET;
-    multicastAddr.sin_addr.s_addr = inet_addr(MDNS_ADDRESS);  // mDNS Multicast address
-    multicastAddr.sin_port = htons(MDNS_PORT);
-
-    // Send the mDNS query
-    int bytesSent = sendto(sockfd, query.c_str(), query.size(), 0, (struct sockaddr *)&multicastAddr, sizeof(multicastAddr));
-    if (bytesSent == SOCKET_ERROR) {
-        std::cerr << "Error sending mDNS query" << std::endl;
-    } else {
-        std::cout << "mDNS query sent!" << std::endl;
-    }
-}
-
-void advertiseMdnsService(SOCKET sockfd, const std::string& multicastAddr, const std::string& danteName, const std::string& function) {
-    // Set the socket options to allow multicast
-    int yes = 1;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *)&yes, sizeof(yes)) == SOCKET_ERROR) {
-        std::cerr << "Error setting socket options" << std::endl;
-        closesocket(sockfd);
-        WSACleanup();
-        return 1;
-    }
-
-    // Bind the socket to the mDNS port
-    struct sockaddr_in localAddr;
-    memset(&localAddr, 0, sizeof(localAddr));
-    localAddr.sin_family = AF_INET;
-    localAddr.sin_addr.s_addr = INADDR_ANY;
-    localAddr.sin_port = htons(MDNS_PORT);
-    if (bind(sockfd, (struct sockaddr *)&localAddr, sizeof(localAddr)) == SOCKET_ERROR) {
-        std::cerr << "Error binding socket" << std::endl;
-        closesocket(sockfd);
-        WSACleanup();
-        return 1;
-    }
-
-    struct sockaddr_in multicastServiceAddr;
-    memset(&multicastServiceAddr, 0, sizeof(multicastServiceAddr));
-    multicastServiceAddr.sin_family = AF_INET;
-    multicastServiceAddr.sin_addr.s_addr = inet_addr(multicastAddr.c_str());  // Custom multicast address for this slave
-    multicastServiceAddr.sin_port = htons(MDNS_PORT);
-
-    // mDNS service query for "_virgil._udp.local."
-    std::string serviceName = danteName + "._virgil._udp.local.";
-    std::string txtRecord = "multicastAddr=" + multicastAddr + "&function=" + function;
-
-    // Create the mDNS service advertisement (simplified format)
-    std::string serviceMessage =
-        "\x00\x00"      // Transaction ID
-        "\x00\x00"      // Flags
-        "\x00\x01"      // Questions: 1
-        "\x00\x00"      // Answers: 0
-        "\x00\x00"      // Authority: 0
-        "\x00\x00"      // Additional: 0
-        + serviceName + "\x00"   // Service name
-        "\x00\x11"      // Type: PTR (pointer)
-        "\x00\x01"      // Class: IN (Internet)
-        "\x00\x10"      // Length of TXT record
-        + txtRecord;    // TXT record: multicastAddr and function
-
-    // Send the mDNS service advertisement
-    int bytesSent = sendto(sockfd, serviceMessage.c_str(), serviceMessage.size(), 0, (struct sockaddr *)&multicastServiceAddr, sizeof(multicastServiceAddr));
-    if (bytesSent == SOCKET_ERROR) {
-        std::cerr << "Error sending mDNS service advertisement" << std::endl;
-    } else {
-        std::cout << "mDNS service advertised with name: " << serviceName << std::endl;
-    }
-}
-
-int main() {
-    const char* ip = "127.0.0.1";  // IP address to send message to
-    int virgilPort = 7889;
-    cout << "What ip do you want to send to?"
-
-    while true
+    // Join multicast group
+    for (const auto& ip : multicast_ips) 
     {
-        cout << "What type of message do you want to send? \n
-        c for command, and i for info request";
-        input << cin;
-        if(input == "c")
-        {
-            while true
-            {
+        ip_mreq mreq;
+        mreq.imr_multiaddr.s_addr = inet_addr(ip.c_str());
+        mreq.imr_interface.s_addr = INADDR_ANY;
+        setsockopt(udp_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&mreq, sizeof(mreq));
+    }
 
+    // --- Main loop ---
+    fd_set readfds;
+    char buffer[4096];
+    while (net_listener_running) 
+    {
+        FD_ZERO(&readfds);
+        FD_SET(tcp_sock, &readfds);
+        FD_SET(udp_sock, &readfds);
+        socket_t maxfd = (tcp_sock > udp_sock) ? tcp_sock : udp_sock;
+
+        timeval timeout;
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 0;
+
+        int activity = select(maxfd + 1, &readfds, nullptr, nullptr, &timeout);
+        if (activity < 0) continue;
+
+        // --- TCP: Accept and read ---
+        if (FD_ISSET(tcp_sock, &readfds)) 
+        {
+            sockaddr_in client_addr;
+            #ifdef _WIN32
+                int addrlen = sizeof(client_addr);
+            #else
+                socklen_t addrlen = sizeof(client_addr);
+            #endif
+            socket_t client_sock = accept(tcp_sock, (sockaddr*)&client_addr, &addrlen);
+            if (client_sock >= 0) 
+            {
+                int len = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
+                if (len > 0) 
+                {
+                    buffer[len] = '\0';
+                    handler(string(buffer, len), client_addr);
+                }
+                CloseSocket(client_sock);
             }
         }
-        else if(input == "i")
+
+        // --- Multicast UDP: Receive ---
+        if (FD_ISSET(udp_sock, &readfds)) 
         {
-
+            sockaddr_in src_addr;
+            #ifdef _WIN32
+                int addrlen = sizeof(src_addr);
+            #else
+                socklen_t addrlen = sizeof(src_addr);
+            #endif
+            int len = recvfrom(udp_sock, buffer, sizeof(buffer) - 1, 0, (sockaddr*)&src_addr, &addrlen);
+            if (len > 0) 
+            {
+                buffer[len] = '\0';
+                handler(string(buffer, len), src_addr);
+            }
         }
-        else
+    }
+
+    CloseSocket(tcp_sock);
+    CloseSocket(udp_sock);
+}
+
+// Start the threaded listener
+void StartNetListener(int port, const vector<string> multicast_ips, PacketHandler handler)
+{
+    net_listener_running = true;
+    net_listener_thread = std::thread(NetListener, port, multicast_ips, handler);
+}
+
+// Stop the threaded listener
+void StopNetListener()
+{
+    net_listener_running = false;
+    if (net_listener_thread.joinable()) {
+        net_listener_thread.join();
+    }
+}
+
+// Example handler function
+void ProcessPacket(const string& data, const sockaddr_in& src)
+{
+    cout << "Received from " << inet_ntoa(src.sin_addr) << ":" << ntohs(src.sin_port)
+         << " - Data: " << data << endl;
+    json j = json::parse(data);
+}
+
+int main() 
+{
+    //Windows Boilerplate
+    #ifdef _WIN32
+        WSADATA wsa;
+        if (WSAStartup(MAKEWORD(2,2), &wsa) != 0)
         {
-            cout << "That is not an accepted input. Please try again \n \n"
+            cerr << "WSAStartup failed.\n";
+            return 1;
         }
-    }
-
-    // Create a simple JSON message using nlohmann/json
-    json json_message = {
-        {"name", "John"},
-        {"age", 30},
-        {"city", "New York"}
-    };
-
-    // Send the JSON message to the server
-    sendTcpJsonMessage(ip, virgilPort, json_message);
-
-    return 0;
-    WSADATA wsaData;
-    int wsa_result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (wsa_result != 0) {
-        std::cerr << "WSAStartup failed: " << wsa_result << "\n";
-        return 1;
-    }
-
-    // Create a UDP socket
-    SOCKET sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sockfd == INVALID_SOCKET) {
-        std::cerr << "Socket creation failed!" << std::endl;
-        WSACleanup();
-        return 1;
-    }
+    #endif
+    //starts advertising mDNS (Not needed for master, but is highly recommended)
+    StartMDNS("ExampleDevice", "master");
     
+    //Here, we have a preexisting list of Dante devices we are subscribed to
+    //You would get this from your preexisting Dante code
+    //I'm just making up a format to make my life easier
+    //This has names, a bool for virgil, a multicast address, and a list of preamps we care about
+    vector<json> danteLookup;
+    //Read mDNS packets for 5 seconds
+    auto mdns_packets = ReadMDNS();
+    //Loop over all packets
+    for (const auto& [data, src] : mdns_packets) 
+    {
+        //Filter for virgil slaves only
+        json j = json::parse(data);
+        if (j["serviceType"] == "_virgil._udp.local." && j["txt"]["function"] == "slave") 
+        {
+            //Search for the device in our dante lookup
+            bool found = false;
+            for (auto& device : danteLookup) 
+            {
+                string serviceName = j["serviceName"];
+                string serviceType = j["serviceType"];
+                string danteName = serviceName.erase(serviceName.find(serviceType),serviceName.length());
+                if(device["name"] == danteName)
+                {
+                    found = true;
+                    device["multicast"] = j["txt"]["multicast"];
+                    device["virgil"] = true;
+                    break;
+                }
+            }
+        }
+    }
+    //Find all the multicast addresses we care about
+    vector<string> multicast_addresses;
+    for(auto& device : danteLookup) 
+    {
+        if(device["virgil"] == false)
+        {
+            continue;
+        }
+        for(int preamp : device["preamps"]) 
+        {
+            multicast_addresses.push_back(device["multicast"] + "." + to_string(preamp));
+        }
+    }
+    //Start the listener
+    //It's important to start the net listener before sending info requests, otherwise you may miss packets
+    StartNetListener(virgilPort, multicast_addresses, ProcessPacket);
+    for(auto& device : danteLookup) 
+    {
+        if(device["virgil"] == false)
+        {
+            continue;
+        }
+        //Send a request to the device
+        json request;
+        request["transmittingDevice"] = "ExampleDevice";
+        request["receivingDevice"] = device["name"];
+        request["messages"] = json::array();
 
-    // Service name (example: "Master1" as dante_name)
-    std::string danteName = "Master1";
-    std::string function = "master";  // The function for this device
+        for (int preamp : device["preamps"]) 
+        {
+            request["messages"].push_back({{"messageType", "statusRequest"},{"preampIndex", preamp}});
+        }
+        SendTCP(device["ip"], virgilPort, request);
+    }
 
-    // Advertise the service over mDNS
-    advertiseMdnsService(sockfd, multicastAddr, danteName, function);
-
-    // Cleanup
-    closesocket(sockfd);
+    //Cleanup
+    #ifdef _WIN32
     WSACleanup();
+    #endif
+    StopNetListener();
+    StopMDNS();
     return 0;
 }

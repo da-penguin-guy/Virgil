@@ -81,7 +81,7 @@ All Messages will be JSON files.
 
 Messages also have 2 strings dictating the routing for the packet. This is to help devices with routing.  
 
-` "sendingDevice" ` Is a string stating the dante name of the device sending the message.  
+` "transmittingDevice" ` Is a string stating the dante name of the device sending the message.  
 All messages should have this unless the device is not Dante, such as a  computer running controller software.  
 
 ` "receivingDevice" ` Is a string stating the dante name of the device receiving the message.  

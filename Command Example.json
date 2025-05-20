@@ -1,5 +1,5 @@
 {
-    "sendingDevice": "MasterDanteDeviceName",
+    "transmittingDevice": "MasterDanteDeviceName",
     "receivingDevice": "SlaveDanteDeviceName",
     "messages" :
     [
