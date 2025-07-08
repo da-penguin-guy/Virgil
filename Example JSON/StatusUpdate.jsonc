@@ -1,0 +1,37 @@
+/*
+Status Update Example
+--------------------
+This message is sent from a slave device to all subscribed master devices whenever a property in a preamp is updated.
+It contains the current state of the preamp (or device) after a change. Status updates are multicast (UDP).
+- Use when: A preamp parameter changes (e.g., gain, pad, etc.) or device info changes.
+- Protocol: multicast
+*/
+{
+    "transmittingDevice": "SlaveDanteDeviceName", // The device sending the update
+    "messages" :
+    [
+        {
+            "messageType" : "StatusUpdate", // Indicates this is a status update
+            "preampIndex" : 0,              // The preamp index being updated
+            "gain" : 
+            {
+                "value" : 0,                // Current gain value in dB
+                "minValue" : -20            // Minimum gain value
+            },
+            "lowcut" : 
+            {
+                "value" : 0                 // Current lowcut filter value
+            },
+            "polarity" : 
+            {
+                "value" : false             // Current polarity (false = normal, true = inverted)
+            }
+        },
+        {
+            "messageType" : "StatusUpdate", // Device-level info (preampIndex -1)
+            "preampIndex" : -1,
+            "model" : "PreampModelName",      // Model name of the device
+            "deviceType" : "digitalStageBox"  // Device type
+        }
+    ]
+}

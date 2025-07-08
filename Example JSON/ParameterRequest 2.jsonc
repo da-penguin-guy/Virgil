@@ -1,0 +1,16 @@
+/*
+Parameter Request Example
+------------------------
+This message is sent from a master device to a slave device to request parameter or device info.
+Set preampIndex to -1 to request device-level info, or to a preamp index for preamp-specific info.
+- Use when: You want to discover device capabilities or preamp parameter ranges.
+- Protocol: udp
+*/
+{
+    "transmittingDevice": "MasterDanteDeviceName", // The device sending the request
+    "receivingDevice": "SlaveDanteDeviceName",     // The device to receive the request
+    "messages" :
+    [
+        { "messageType" : "ParameterRequest", "preampIndex" : -1 } // Request device-level info
+    ]
+}

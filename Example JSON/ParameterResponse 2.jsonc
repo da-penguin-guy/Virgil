@@ -1,0 +1,26 @@
+/*
+Parameter Response Example
+---------------------------
+This message is sent from a slave device to a master device in response to a ParameterRequest with preampIndex: -1.
+It describes the device-level information such as model, device type, and dante name.
+- Use when: A master requests device-level info (not preamp-specific).
+- Protocol: udp
+*/
+{
+    "transmittingDevice": "SlaveDanteDeviceName", // The device sending the info
+    "receivingDevice": "MasterDanteDeviceName",   // The device that requested the info
+    "parameterResponses" :
+    [
+        {
+            "model" : {
+                "value": "PreampModelName",
+                "locked": true
+            },
+            "deviceType" : {
+                "value": "digitalStageBox",
+                "locked": true
+            },
+            "preampCount" : 4                  // Number of preamps in the device
+        }
+    ]
+}

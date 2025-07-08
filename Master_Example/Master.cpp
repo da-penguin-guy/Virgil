@@ -38,6 +38,10 @@ thread net_listener_thread;
 using PacketHandler = std::function<void(const std::string&, const sockaddr_in&)>;
 
 int virgilPort = 7889;
+//Here, we have a preexisting list of Dante devices we are subscribed to
+//You would get this from your preexisting Dante code
+//I'm just making up a format to make my life easier
+map<string,json> danteLookup = {};
 
 
 socket_t CreateSocket(int type, int port, sockaddr_in& addr) 
@@ -47,7 +51,6 @@ socket_t CreateSocket(int type, int port, sockaddr_in& addr)
     {
         cerr << "Socket creation failed.\n";
     }
-    sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
@@ -91,9 +94,16 @@ void AdvertiseMDNS(const string& danteName, const string& function, const string
         mdns_advert["txt"]["multicast"] = multicastBase;
     }
     mdns_advert["txt"]["function"] = function;
+    mdns_advert["txt"]["model"] = "virgilExample";
+    mdns_advert["txt"]["deviceType"] = "computer";
 
     sockaddr_in addr;
     socket_t sock = CreateSocket(SOCK_DGRAM, mdns_port, addr);
+
+    // Set destination address to multicast group
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(mdns_port);
+    inet_pton(AF_INET, mdns_ip, &addr.sin_addr);
 
     string payload = mdns_advert.dump();
 
@@ -132,7 +142,7 @@ vector<pair<string, sockaddr_in>> ReadMDNS()
 
     // Join mDNS multicast group
     ip_mreq mreq;
-    mreq.imr_multiaddr.s_addr = inet_addr(mdns_ip);
+    inet_pton(AF_INET, mdns_ip, &mreq.imr_multiaddr);
     mreq.imr_interface.s_addr = INADDR_ANY;
     setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&mreq, sizeof(mreq));
 
@@ -169,7 +179,7 @@ vector<pair<string, sockaddr_in>> ReadMDNS()
 void StartMDNS(const string& danteName, const string& function, const string& multicastBase = "") 
 {
     mdns_running = true;
-    mdns_thread = std::thread(AdvertiseMDNS, danteName, function, virgilPort, multicastBase);
+    mdns_thread = std::thread(AdvertiseMDNS, danteName, function, multicastBase);
 }
 
 void StopMDNS() 
@@ -186,7 +196,7 @@ bool SendTCP(const string& ip, int port, json message)
     socket_t sock = CreateSocket(SOCK_STREAM, port, addr);
 
     // Set the destination IP address
-    addr.sin_addr.s_addr = inet_addr(ip.c_str());
+    inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
 
     if (connect(sock, (sockaddr*)&addr, sizeof(addr)) < 0) 
     {
@@ -213,7 +223,11 @@ bool SendMulticast(const string& multicast_ip, int port, const json& message)
     socket_t sock = CreateSocket(SOCK_DGRAM, port, addr);
 
     // Set the destination multicast IP
-    addr.sin_addr.s_addr = inet_addr(multicast_ip.c_str());
+    if (inet_pton(AF_INET, multicast_ip.c_str(), &addr.sin_addr) != 1) {
+        cerr << "Invalid multicast IP address: " << multicast_ip << endl;
+        CloseSocket(sock);
+        return false;
+    }
 
     std::string messageDump = message.dump();
     int send_result = sendto(sock, messageDump.c_str(), messageDump.size(), 0, (sockaddr*)&addr, sizeof(addr));
@@ -257,7 +271,7 @@ void NetListener(int port, const vector<string> multicast_ips, PacketHandler han
     for (const auto& ip : multicast_ips) 
     {
         ip_mreq mreq;
-        mreq.imr_multiaddr.s_addr = inet_addr(ip.c_str());
+        inet_pton(AF_INET, ip.c_str(), &mreq.imr_multiaddr);
         mreq.imr_interface.s_addr = INADDR_ANY;
         setsockopt(udp_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&mreq, sizeof(mreq));
     }
@@ -327,7 +341,7 @@ void NetListener(int port, const vector<string> multicast_ips, PacketHandler han
 void StartNetListener(int port, const vector<string> multicast_ips, PacketHandler handler)
 {
     net_listener_running = true;
-    net_listener_thread = std::thread(NetListener, port, multicast_ips, handler);
+    net_listener_thread = thread(NetListener, port, multicast_ips, handler);
 }
 
 // Stop the threaded listener
@@ -342,14 +356,63 @@ void StopNetListener()
 // Example handler function
 void ProcessPacket(const string& data, const sockaddr_in& src)
 {
-    cout << "Received from " << inet_ntoa(src.sin_addr) << ":" << ntohs(src.sin_port)
-         << " - Data: " << data << endl;
-    json j = json::parse(data);
+    // Robustly parse and handle all valid Virgil protocol responses
+    json j;
+    try {
+        j = json::parse(data);
+    } catch (...) {
+        cerr << "Received invalid JSON packet.\n";
+        return;
+    }
+    if (!j.contains("transmittingDevice") || !j.contains("messages")) {
+        cerr << "Malformed Virgil packet.\n";
+        return;
+    }
+    json& device = danteLookup[j["transmittingDevice"]];
+    for (const json& message : j["messages"]) {
+        if (!message.contains("messageType")) continue;
+        string messageType = message["messageType"];
+        if (messageType == "statusUpdate" || messageType == "statusResponse" || messageType == "parameterResponse") {
+            // Handle device-level responses (preampIndex -1 only)
+            if (message.contains("preampIndex") && int(message["preampIndex"]) == -1) {
+                // Device-level info: update device fields, not preamp
+                json msgCopy = message;
+                msgCopy.erase("preampIndex");
+                msgCopy.erase("messageType");
+                device.update(msgCopy);
+                // If preampCount is present, update device's preampCount
+                if (msgCopy.contains("preampCount")) {
+                    device["preampCount"] = msgCopy["preampCount"];
+                }
+                continue;
+            }
+            // Ignore responses with preampIndex -2 (should never occur)
+            if (message.contains("preampIndex") && int(message["preampIndex"]) == -2) {
+                cerr << "Warning: Received response with preampIndex -2 (invalid per protocol). Ignoring.\n";
+                continue;
+            }
+            // Handle preamp-level responses (preampIndex >= 0)
+            if (message.contains("preampIndex")) {
+                int idx = message["preampIndex"];
+                if (idx >= 0 && device.contains("preamps") && idx < device["preamps"].size()) {
+                    json msgCopy = message;
+                    msgCopy.erase("preampIndex");
+                    msgCopy.erase("messageType");
+                    device["preamps"][idx].update(msgCopy);
+                }
+            }
+        }
+        // Optionally handle errors, info, etc. here
+        else if (messageType == "error") {
+            cerr << "Received error from device: " << j["transmittingDevice"] << ": " << message.dump() << endl;
+        }
+        // Add more messageType handling as needed
+    }
 }
 
 int main() 
 {
-    //Windows Boilerplate
+    // Windows network initialization
     #ifdef _WIN32
         WSADATA wsa;
         if (WSAStartup(MAKEWORD(2,2), &wsa) != 0)
@@ -358,76 +421,125 @@ int main()
             return 1;
         }
     #endif
-    //starts advertising mDNS (Not needed for master, but is highly recommended)
+
+    // Start mDNS advertising as a master
     StartMDNS("ExampleDevice", "master");
-    
-    //Here, we have a preexisting list of Dante devices we are subscribed to
-    //You would get this from your preexisting Dante code
-    //I'm just making up a format to make my life easier
-    //This has names, a bool for virgil, a multicast address, and a list of preamps we care about
-    vector<json> danteLookup;
-    //Read mDNS packets for 5 seconds
+
+    // Read mDNS packets for 5 seconds to discover Virgil slaves
     auto mdns_packets = ReadMDNS();
-    //Loop over all packets
     for (const auto& [data, src] : mdns_packets) 
     {
-        //Filter for virgil slaves only
-        json j = json::parse(data);
+        // Filter for Virgil slaves only
+        json j;
+        try { j = json::parse(data); } catch (...) { continue; }
         if (j["serviceType"] == "_virgil._udp.local." && j["txt"]["function"] == "slave") 
         {
-            //Search for the device in our dante lookup
-            bool found = false;
-            for (auto& device : danteLookup) 
-            {
-                string serviceName = j["serviceName"];
-                string serviceType = j["serviceType"];
-                string danteName = serviceName.erase(serviceName.find(serviceType),serviceName.length());
-                if(device["name"] == danteName)
-                {
-                    found = true;
-                    device["multicast"] = j["txt"]["multicast"];
-                    device["virgil"] = true;
-                    break;
-                }
+            // Find or create the device in our lookup
+            string serviceName = j["serviceName"];
+            string serviceType = j["serviceType"];
+            string danteName = serviceName.erase(serviceName.find(serviceType), serviceName.length());
+            if (danteLookup.find(danteName) == danteLookup.end()) {
+                danteLookup[danteName] = json::object();
+                danteLookup[danteName]["name"] = danteName;
+                danteLookup[danteName]["preamps"] = json::array();
             }
+            auto& device = danteLookup[danteName];
+            device["multicast"] = j["txt"]["multicast"];
+            device["virgil"] = true;
+            // Optionally store IP for TCP requests
+            char ipstr[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &src.sin_addr, ipstr, sizeof(ipstr));
+            device["ip"] = string(ipstr);
         }
     }
-    //Find all the multicast addresses we care about
+
+
+    // Print all found devices and let user select which to request data from
+    vector<string> device_keys;
+    cout << "Devices found:" << endl;
+    int idx = 1;
+    for (auto& [key, device] : danteLookup) {
+        cout << idx << ": Name: " << device["name"];
+        if (device.contains("ip")) cout << ", IP: " << device["ip"];
+        if (device.contains("multicast")) cout << ", Multicast: " << device["multicast"];
+        cout << endl;
+        device_keys.push_back(key);
+        ++idx;
+    }
+    if (device_keys.empty()) {
+        cout << "No devices found. Exiting." << endl;
+        StopNetListener();
+        StopMDNS();
+        #ifdef _WIN32
+        WSACleanup();
+        #endif
+        return 0;
+    }
+    cout << "Enter device numbers to request data from (comma-separated, or 'all'): ";
+    string input;
+    getline(cin, input);
+    vector<int> selected_indices;
+    if (input == "all" || input == "ALL") {
+        for (int i = 1; i <= (int)device_keys.size(); ++i) selected_indices.push_back(i);
+    } else {
+        size_t pos = 0;
+        while (pos < input.size()) {
+            while (pos < input.size() && !isdigit(input[pos])) ++pos;
+            if (pos >= input.size()) break;
+            int num = 0;
+            while (pos < input.size() && isdigit(input[pos])) {
+                num = num * 10 + (input[pos] - '0');
+                ++pos;
+            }
+            if (num > 0 && num <= (int)device_keys.size()) selected_indices.push_back(num);
+        }
+    }
+
+    // Find all multicast addresses for selected devices
     vector<string> multicast_addresses;
-    for(auto& device : danteLookup) 
-    {
-        if(device["virgil"] == false)
-        {
-            continue;
-        }
-        for(int preamp : device["preamps"]) 
-        {
-            multicast_addresses.push_back(device["multicast"] + "." + to_string(preamp));
+    for (int i : selected_indices) {
+        auto& device = danteLookup[device_keys[i-1]];
+        if (device["virgil"] == false) continue;
+        string base = device["multicast"];
+        multicast_addresses.push_back(base + ".-1"); // Device-level
+        multicast_addresses.push_back(base + ".-1"); // All-preamp (if protocol uses -1 for both)
+        for (const auto& preamp : device["preamps"]) {
+            multicast_addresses.push_back(base + "." + to_string(preamp["preampIndex"]));
         }
     }
-    //Start the listener
-    //It's important to start the net listener before sending info requests, otherwise you may miss packets
+
+    // Start the listener before sending info requests
     StartNetListener(virgilPort, multicast_addresses, ProcessPacket);
-    for(auto& device : danteLookup) 
-    {
-        if(device["virgil"] == false)
-        {
-            continue;
-        }
-        //Send a request to the device
+
+    // Send all status requests to selected devices
+    for (int i : selected_indices) {
+        auto& device = danteLookup[device_keys[i-1]];
+        if (device["virgil"] == false) continue;
         json request;
         request["transmittingDevice"] = "ExampleDevice";
         request["receivingDevice"] = device["name"];
         request["messages"] = json::array();
-
-        for (int preamp : device["preamps"]) 
-        {
-            request["messages"].push_back({{"messageType", "statusRequest"},{"preampIndex", preamp}});
+        // Device-level info
+        request["messages"].push_back({{"messageType", "statusRequest"}, {"preampIndex", -1}});
+        // Each preamp (if known)
+        if (device.contains("preamps")) {
+            for (size_t j = 0; j < device["preamps"].size(); ++j) {
+                int pidx = device["preamps"][j]["preampIndex"];
+                request["messages"].push_back({{"messageType", "statusRequest"}, {"preampIndex", pidx}});
+            }
         }
-        SendTCP(device["ip"], virgilPort, request);
+        // Optionally, request model info if needed by protocol
+        request["messages"].push_back({{"messageType", "statusRequest"}, {"modelRequest", true}});
+        if (!SendTCP(device["ip"], virgilPort, request)) {
+            cerr << "Failed to send statusRequest to device: " << device["name"] << endl;
+        }
     }
 
-    //Cleanup
+    // Wait for responses interactively (or for a set time)
+    cout << "Listening for responses. Press Enter to exit..." << endl;
+    cin.get();
+
+    // Cleanup
     #ifdef _WIN32
     WSACleanup();
     #endif
