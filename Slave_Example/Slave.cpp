@@ -1,8 +1,12 @@
+
 #include <iostream>
 #include <string>
 #include <vector>
 #include <mutex>
 #include "nlohmann/json.hpp"
+#include <thread>
+#include <atomic>
+
 
 #ifdef _WIN32
 #include <winsock2.h>
@@ -65,6 +69,8 @@ vector<Preamp> preamps;
 DeviceInfo deviceInfo;
 mutex state_mutex;
 
+std::atomic<bool> mdns_running{true};
+
 
 void PrintEvent(const string& msg) {
     cout << "[EVENT] " << msg << endl;
@@ -121,6 +127,36 @@ void SendMulticast(const json& message, const string& multicast_ip) {
     inet_pton(AF_INET, multicast_ip.c_str(), &addr.sin_addr);
     string payload = message.dump();
     sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
+    CloseSocket(sock);
+}
+
+void AdvertiseMDNS() {
+    const char* mdns_ip = "224.0.0.251";
+    int mdns_port = 5353;
+    socket_t sock = socket(AF_INET, SOCK_DGRAM, 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(mdns_port);
+    inet_pton(AF_INET, mdns_ip, &addr.sin_addr);
+
+    while (mdns_running) {
+        json mdns_advert;
+        mdns_advert["serviceName"] = string(SLAVE_DANTE_NAME) + "." + "_virgil._udp.local.";
+        mdns_advert["serviceType"] = "_virgil._udp.local.";
+        mdns_advert["port"] = VIRGIL_PORT;
+        mdns_advert["txt"]["multicast"] = MULTICAST_BASE;
+        mdns_advert["txt"]["function"] = "slave";
+        mdns_advert["txt"]["model"] = deviceInfo.model;
+        mdns_advert["txt"]["deviceType"] = deviceInfo.deviceType;
+        string payload = mdns_advert.dump();
+        int res = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
+        if (res < 0) {
+            PrintEvent("mDNS advertisement failed");
+        } else {
+            PrintEvent("mDNS advertisement sent");
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
     CloseSocket(sock);
 }
 
@@ -261,33 +297,40 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
 }
 
 int main() {
-#ifdef _WIN32
-    WSADATA wsa;
-    if (WSAStartup(MAKEWORD(2,2), &wsa) != 0) {
-        cerr << "WSAStartup failed." << endl;
-        return 0;
-    }
-#endif
+    #ifdef _WIN32
+        WSADATA wsa;
+        if (WSAStartup(MAKEWORD(2,2), &wsa) != 0) {
+            cerr << "WSAStartup failed." << endl;
+            return 0;
+        }
+    #endif
+
     // Initialize preamps
     deviceInfo = DeviceInfo();
-    //If this was an actual device, you would get the current values of gain, pad, lowcut, etc.
-    //For this example, we just initialize them with default values.
     preamps.clear();
     for (int i = 0; i < deviceInfo.preampCount; ++i) {
         preamps.emplace_back(i);
     }
+
+    // Start mDNS advertisement in a background thread
+    std::thread mdns_thread(AdvertiseMDNS);
+
     // Create UDP socket for listening
     socket_t sock = CreateUdpSocket(VIRGIL_PORT);
-    if (sock < 0) return 0;
+    if (sock < 0) {
+        mdns_running = false;
+        if (mdns_thread.joinable()) mdns_thread.join();
+        return 0;
+    }
     PrintEvent("Slave listening on UDP port " + to_string(VIRGIL_PORT));
     char buffer[4096];
     while (true) {
         sockaddr_in src_addr;
-#ifdef _WIN32
-        int addrlen = sizeof(src_addr);
-#else
-        socklen_t addrlen = sizeof(src_addr);
-#endif
+        #ifdef _WIN32
+            int addrlen = sizeof(src_addr);
+        #else
+            socklen_t addrlen = sizeof(src_addr);
+        #endif
         int len = recvfrom(sock, buffer, sizeof(buffer)-1, 0, (sockaddr*)&src_addr, &addrlen);
         if (len > 0) {
             buffer[len] = '\0';
@@ -295,10 +338,12 @@ int main() {
         }
     }
     CloseSocket(sock);
-#ifdef _WIN32
-    WSACleanup();
-#endif
-return 0;
+    mdns_running = false;
+    if (mdns_thread.joinable()) mdns_thread.join();
+    #ifdef _WIN32
+        WSACleanup();
+    #endif
+    return 0;
 }
 
 
