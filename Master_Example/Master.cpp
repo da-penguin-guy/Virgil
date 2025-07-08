@@ -515,16 +515,7 @@ int main()
         request["receivingDevice"] = device["name"];
         request["messages"] = json::array();
         // Device-level info
-        request["messages"].push_back({{"messageType", "statusRequest"}, {"preampIndex", -1}});
-        // Each preamp (if known)
-        if (device.contains("preamps")) {
-            for (size_t j = 0; j < device["preamps"].size(); ++j) {
-                int pidx = device["preamps"][j]["preampIndex"];
-                request["messages"].push_back({{"messageType", "statusRequest"}, {"preampIndex", pidx}});
-            }
-        }
-        // Optionally, request model info if needed by protocol
-        request["messages"].push_back({{"messageType", "statusRequest"}, {"modelRequest", true}});
+        request["messages"].push_back({{"messageType", "statusRequest"}, {"preampIndex", -2}});
         if (!SendUDP(device["ip"], virgilPort, request)) {
             cerr << "Failed to send statusRequest to device: " << device["name"] << endl;
         }

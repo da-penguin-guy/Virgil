@@ -6,10 +6,12 @@ It describes the capabilities and current state of a preamp, including supported
 - Use when: A master requests detailed information about a preamp's capabilities and current settings.
 - Protocol: udp
 */
+
+//This is in response to a ParameterRequest with preampIndex: -2
 {
     "transmittingDevice": "SlaveDanteDeviceName", // The device sending the info
     "receivingDevice": "MasterDanteDeviceName",   // The device that requested the info
-    "parameterResponses" :
+    "messages" :
     [
         {
             "model" : {

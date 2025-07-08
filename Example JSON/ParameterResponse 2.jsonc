@@ -9,7 +9,7 @@ It describes the device-level information such as model, device type, and dante 
 {
     "transmittingDevice": "SlaveDanteDeviceName", // The device sending the info
     "receivingDevice": "MasterDanteDeviceName",   // The device that requested the info
-    "parameterResponses" :
+    "messages" :
     [
         {
             "model" : {

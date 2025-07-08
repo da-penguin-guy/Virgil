@@ -9,7 +9,7 @@ It describes the capabilities and current state of a preamp, including supported
 {
     "transmittingDevice": "SlaveDanteDeviceName", // The device sending the info
     "receivingDevice": "MasterDanteDeviceName",   // The device that requested the info
-    "parameterResponses" :
+    "messages" :
     [
         {
             "preampIndex" : 0,                    // The preamp being described

@@ -186,7 +186,7 @@ json MakeParameterResponse(int preampIndex) {
     json msg;
     msg["transmittingDevice"] = SLAVE_DANTE_NAME;
     msg["receivingDevice"] = "MasterDanteDeviceName";
-    msg["parameterResponses"] = json::array();
+    msg["messages"] = json::array();
     if (preampIndex == -1) {
         json dev;
         dev["model"]["value"] = deviceInfo.model;
@@ -194,10 +194,22 @@ json MakeParameterResponse(int preampIndex) {
         dev["deviceType"]["value"] = deviceInfo.deviceType;
         dev["deviceType"]["locked"] = true;
         dev["preampCount"] = deviceInfo.preampCount;
-        msg["parameterResponses"].push_back(dev);
+        msg["messages"].push_back(dev);
+    } else if (preampIndex == -2) {
+        // -2: include device-level info and all preamps
+        json dev;
+        dev["model"]["value"] = deviceInfo.model;
+        dev["model"]["locked"] = true;
+        dev["deviceType"]["value"] = deviceInfo.deviceType;
+        dev["deviceType"]["locked"] = true;
+        dev["preampCount"] = deviceInfo.preampCount;
+        msg["messages"].push_back(dev);
+        for (const Preamp& p : preamps) {
+            msg["messages"].push_back(p);
+        }
     } else if (preampIndex >= 0 && preampIndex < (int)preamps.size()) {
         const Preamp& p = preamps[preampIndex];
-        msg["parameterResponses"].push_back(p);
+        msg["messages"].push_back(p);
     }
     return msg;
 }

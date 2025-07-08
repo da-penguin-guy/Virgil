@@ -11,6 +11,6 @@ Set preampIndex to -1 to request device-level info, or to a preamp index for pre
     "receivingDevice": "SlaveDanteDeviceName",     // The device to receive the request
     "messages" :
     [
-        { "messageType" : "ParameterRequest", "preampIndex" : -2 } // Request device-level info
+        { "messageType" : "ParameterRequest", "preampIndex" : -2 } // Request device-level info and all preamps
     ]
 }

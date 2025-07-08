@@ -105,51 +105,46 @@ The following parameters are only present in device-level ParameterInfoResponse 
 - If a value type is percentage, use an int from 0 to 100, unit string "%", precision 1, minValue 0, and maxValue 100.
 - For precision, values not equal to 1 are counted from the min value. For example, if precision is 3dB and minValue is -5dB, available options are -5, -2, 1, 4, etc.
 
+
 # Formatting Overview
-All Messages will be JSON files.  
+All messages are JSON objects with the following top-level fields:
 
-Messages also have 2 strings dictating the routing for the packet. This is to help devices with routing.  
+- `transmittingDevice`: The Dante name of the device sending the message.
+- `receivingDevice`: The Dante name of the device receiving the message (not present for multicast messages).
 
-` "transmittingDevice" ` Is a string stating the dante name of the device sending the message.  
-All messages should have this unless the device is not Dante, such as a  computer running controller software.  
+For most message types, the payload is an array called `messages`, containing one or more message objects. Each object in this array must have a `messageType` field indicating its type.
 
-` "receivingDevice" ` Is a string stating the dante name of the device receiving the message.  
-All messages should have this unless they are multicast, such as Status Updates  
 
-` "messages" ` is an array containing all of the messages being sent.  
-Several messages can be sent at once.  
-
-The first line of all messages should be  ` "messageType" `
 
 # Message Types
 
-Virgil uses the following message types for communication between devices. Each message type is identified by the `messageType` field in the JSON message array. Use these names in your implementation and documentation for clarity.
+Virgil uses the following message types for communication between devices. Each message type is identified by the `messageType` field in the `messages` array.
 
-| Message Type                | Description                                                                                 | Direction                | Protocol   |
-|-----------------------------|---------------------------------------------------------------------------------------------|--------------------------|------------|
-| ParameterCommand            | Request to set or change a parameter on a device/preamp.                                    | Master → Slave           | UDP        |
-| StatusRequest               | Request the current status of one or more preamps.                                          | Master → Slave           | UDP        |
-| StatusUpdate                | Notification that a parameter or device state has changed.                                  | Slave → Masters (all)    | Multicast  |
-| ParameterRequest            | Request detailed information about device/preamp parameters and capabilities.               | Master → Slave           | UDP        |
-| ParameterResponse       | Response with parameter info/capabilities.                                                  | Slave → Master           | UDP        |
-| ErrorResponse               | Response indicating a request could not be processed, with error details.                   | Slave → Master           | UDP        |
+| Message Type         | Description                                                                 | Direction             | Protocol   |
+|---------------------|-----------------------------------------------------------------------------|-----------------------|------------|
+| ParameterCommand    | Request to set or change a parameter on a device/preamp.                    | Master → Slave        | UDP        |
+| StatusRequest       | Request the current status of one or more preamps.                          | Master → Slave        | UDP        |
+| StatusUpdate        | Notification that a parameter or device state has changed.                   | Slave → Masters (all) | Multicast  |
+| ParameterRequest    | Request detailed information about device/preamp parameters and capabilities.| Master → Slave        | UDP        |
+| ParameterResponse   | Response with parameter info/capabilities.                                  | Slave → Master        | UDP        |
+| ErrorResponse       | Response indicating a request could not be processed, with error details.    | Slave → Master        | UDP        |
 
 **Usage Examples:**
 - Use `ParameterCommand` to change gain, pad, etc.
 - Use `StatusRequest` to poll the current state of a preamp or device.
 - Use `StatusUpdate` to inform all controllers of a change (sent automatically by slaves).
 - Use `ParameterRequest` to discover what parameters and ranges a device supports.
-- Use `ParameterResponse` to reply to info requests.
+- Use `ParameterResponse` to reply to `ParameterRequest` messages.
 - Use `ErrorResponse` to indicate errors (invalid command, out of range, etc.).
 
 **Note:**
-- The `messages` array in each packet contains one or more message objects, each with a `messageType` field set to one of the above types.
+- The `messages` array in each packet contains one or more message objects, each with a `messageType` field set to one of the above types. Only `ParameterResponse` uses `parameterResponses`.
 
-# Commands
-Commands are typically sent from a master device (mixer, computer, etc.) to a slave device (Digital stagebox, Preamp, etc.)  
-Commands only contain the information being updated in the slave device.  
+# Parameter Commands
+Parameter Commands are typically sent from a master device (mixer, computer, etc.) to a slave device (Digital stagebox, Preamp, etc.)  
+Parameter Commands only contain the information being updated in the slave device.  
 For example, a mixer changing a stagebox's gain would only contain the gain value for one preamp, instead of containing pad, phantom power, etc.  
-Commands are sent using UDP for simplicity and low overhead on embedded devices.  
+Parameter Commands are sent using UDP for simplicity and low overhead on embedded devices.  
 
 Look at the example JSON or the example scripts for more specific information.
 
@@ -162,17 +157,17 @@ Status updates are multicast (UDP).
 
 Look at the example JSON or the example scripts for more specific information.
 
-# Info Message
-Info Messages are similar to status updates, with a few key differences.  
-Info messages are requested via an Info Request and sent to a single master device.  
+# Parameter Request
+Parameter Requests are similar to status updates, with a few key differences.  
+Parameter Requests are requested via an Parameter Request and sent to a single master device.  
 They are also able to give data on all slave preamps, if requested to.  
-Info Messages communicate the capabilities of each preamp, such as gain ranges, precision, etc.  
-Info Messages are sent via UDP.
+Parameter Requests communicate the capabilities of each preamp, such as gain ranges, precision, etc.  
+Parameter Requests are sent via UDP.
 
 Look at the example JSON or the example scripts for more specific information.
 
-# Error Message
-Error Messages are sent whenever a command was unable to be processed.  
+# Error Response
+Error Responses are sent whenever a command was unable to be processed.  
 This could be if a master attempts to change a fixed gain, sends an unrecognized command, or many other situations.  
 Error packets are UDP.
 Error packets have 2 values, the error type and error string.  
@@ -200,51 +195,42 @@ Error Strings are text strings that should be shown to the end user. These do no
 
 Look at the example JSON or the example scripts for more specific information.
 
-# Info Requests
-Info requests are sent from a master to a slave to request an Info Message.  
+
+# Parameter Requests
+`ParameterRequest` messages are sent from a master to a slave to request parameter information.  
 They contain an array of the preamp indices that should be sent.
-Info Messages, once requested, are sent to the IP address that requested it.
-Info requests can also request information about the device itself, such as the model number, device type, etc.
+`ParameterResponse` messages, once requested, are sent to the IP address that requested it.
+`ParameterRequest` can also request information about the device itself, such as the model number, device type, etc.
 
 **ParameterRequest and preampIndex Handling:**
 - When sending `ParameterRequest` messages, you may send requests for all possible preamp indices at once (including -1 for device-level info and 0..N-1 for each preamp).
-- Some devices may respond with a `preampIndex` of -2, which should be treated as equivalent to device-level info (like -1).
-- Always parse and store any response with `preampIndex: -1` or `preampIndex: -2` as device-level info, and all other valid indices as preamp-level info.
-- This allows you to send all requests at once and handle all possible device implementations robustly.
+- A `preampIndex` of -1 should be treated as a request for device-level info (model number, device type, preampCount, etc).
+- A `preampIndex` of -2 should be treated as a request for both device-level info (like -1) and for every preamp (0..N-1). If you receive a response with `preampIndex: -2`, treat it as if you received both device-level info and all preamp info.
 
 Look at the example JSON or the example scripts for more specific information.
 
-# Parameter Info Response
-Parameter Info Responses provide detailed information about the parameters supported by a device or preamp. They are sent in response to a `ParameterRequest` message and contain the requested parameter information.
+
+
+# Parameter Responses
+`ParameterResponse` messages provide detailed information about the parameters supported by a device or preamp. They are sent in response to a `ParameterRequest` message and contain the requested parameter information.
 
 ## Message Structure
-A `ParameterInfoResponse` message contains the following fields:
+A `ParameterResponse` message contains the following fields:
 
-- **messageType**: Should be set to `ParameterResponse`.
 - **transmittingDevice**: The Dante name of the device sending the response.
 - **receivingDevice**: The Dante name of the device receiving the response.
-- **parameterResponses** (array, REQUIRED): An array containing the parameter information messages. This field is required and replaces the previous `messages` array for clarity and consistency.
+- **messages** (array, REQUIRED): An array containing the parameter information messages. This field is required for this message type.
 
-## Parameter Information Message Structure
-Each object in the `parameterResponses` array of a `ParameterInfoResponse` contains the following fields:
+## Parameter Response Structure
 
-- **preampIndex**: The index of the preamp this message pertains to. Use -1 for device-level parameters.
-- **gain**: Information about the `gain` parameter (see below).
-- **pad**: Information about the `pad` parameter (see below).
-- **lowcut**: Information about the `lowcut` parameter (see below).
-- **polarity**: Information about the `polarity` parameter (see below).
-- **phantomPower**: Information about the `phantomPower` parameter (see below).
-- **rfPower**: Information about the `rfPower` parameter (see below).
-- **rfEnable**: Information about the `rfEnable` parameter (see below).
-- **batteryLevel**: Information about the `batteryLevel` parameter (see below).
-- **model**: Information about the `model` parameter (see below).
-- **deviceType**: Information about the `deviceType` parameter (see below).
-- **preampCount** (int): The number of preamps on the device. This field is REQUIRED only in device-level ParameterInfoResponse objects (where `preampIndex` is -1) and MUST NOT be included for preamp-level responses.
+Each object in the `messages` array of a `ParameterResponse` includes all properties that this device supports (such as gain, pad, lowcut, etc.), using the property names and sub-values defined in the parameter list at the top of this document. Only include the properties present on the device. For the structure and sub-fields of each property, refer to the parameter definitions above.
+
+See the example JSON files for the exact structure for each parameter.
 
 ## Notes
-- The `parameterResponses` field is REQUIRED and replaces the previous `messages` array for all ParameterInfoResponse messages.
+- The `messages` field is REQUIRED for all `ParameterResponse` messages.
 - The `preampCount` field is only present for device-level responses (where `preampIndex` is -1) and MUST NOT be included for preamp-level responses.
-- Include all supported parameters for each preamp in the `parameterResponses` array.
+- Include all supported parameters for each preamp in the `messages` array.
 - Use the `locked` field to indicate if a parameter is adjustable or fixed.
 
 Look at the example JSON or the example scripts for more specific information.
