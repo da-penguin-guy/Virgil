@@ -190,29 +190,24 @@ void StopMDNS()
     }
 }
 
-bool SendTCP(const string& ip, int port, json message)
-{
-    sockaddr_in addr;
-    socket_t sock = CreateSocket(SOCK_STREAM, port, addr);
-
-    // Set the destination IP address
+// SendVirgilUDP: Send a Virgil protocol message via UDP (unicast)
+bool SendUDP(const string& ip, int port, const json& message) {
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
     inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
-
-    if (connect(sock, (sockaddr*)&addr, sizeof(addr)) < 0) 
-    {
-        cerr << "TCP connect failed.\n";
+    socket_t sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        cerr << "UDP socket creation failed.\n";
+        return false;
+    }
+    string payload = message.dump();
+    int res = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
+    if (res < 0) {
+        cerr << "UDP send failed.\n";
         CloseSocket(sock);
         return false;
     }
-    std::string messageDump = message.dump();
-    int send_result = send(sock, messageDump.c_str(), messageDump.size(), 0);
-    if (send_result < 0) 
-    {
-        cerr << "TCP send failed.\n";
-        CloseSocket(sock);
-        return false;
-    }
-
     CloseSocket(sock);
     return true;
 }
@@ -530,7 +525,7 @@ int main()
         }
         // Optionally, request model info if needed by protocol
         request["messages"].push_back({{"messageType", "statusRequest"}, {"modelRequest", true}});
-        if (!SendTCP(device["ip"], virgilPort, request)) {
+        if (!SendUDP(device["ip"], virgilPort, request)) {
             cerr << "Failed to send statusRequest to device: " << device["name"] << endl;
         }
     }
