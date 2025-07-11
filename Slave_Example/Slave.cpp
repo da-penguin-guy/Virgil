@@ -249,7 +249,11 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
     }
     cout << "Valid packet received";
     for (const auto& msg : j["messages"]) {
-        if (!msg.contains("messageType")) continue;
+        cout << "Processing message: " << msg.dump(2) << endl;
+        if (!msg.contains("messageType")) {
+            cout << "Message has no type, skipping." << endl;
+            continue;
+        }
         string type = msg["messageType"];
         if (type == "ParameterRequest") {
             cout << "Received ParameterRequest" << endl;
