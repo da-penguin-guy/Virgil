@@ -21,7 +21,7 @@ The following parameters are supported by Virgil. Only `gain` is mandatory. If a
 - `name` (string): The parameter name as used in JSON messages.
 - `Description`: What the parameter controls.
 - `Unit` (string): The unit of measurement, if applicable.
-- `Value Type` (string): The data type (e.g., int, float, bool, string).
+- `dataType` (string): The data type (e.g., int, float, bool, string).
 - `Range` (if applicable): Minimum and maximum values.
 - `Precision` (if applicable): Step size for value changes.
 - `Locked` (bool): If true, the parameter cannot be changed.
@@ -31,7 +31,7 @@ The following parameters are supported by Virgil. Only `gain` is mandatory. If a
 ### gain
 - **Description:** Analog gain of the preamp (ignores pad).
 - **Unit:** dB
-- **Value Type:** int or float
+- **dataType:** int or float
 - **Range:** Device-specific (see `minValue` and `maxValue` fields)
 - **Precision:** Step size in dB (see `precision` field)
 - **Locked:** true if gain is fixed or disabled
@@ -40,43 +40,43 @@ The following parameters are supported by Virgil. Only `gain` is mandatory. If a
 ### pad
 - **Description:** Optional attenuator for the preamp input.
 - **Unit:** dB (for `padLevel`)
-- **Value Type:** bool (on/off)
+- **dataType:** bool (on/off)
 - **padLevel:** Amount of attenuation applied when pad is enabled (int or float, usually negative)
 - **Locked:** true if pad cannot be changed
 
 ### lowcut
 - **Description:** High-pass (low cut) filter control.
 - **Unit:** Hz
-- **Value Type:** int
+- **dataType:** int
 - **Range:** Device-specific (see `minValue` and `maxValue` fields)
 - **Precision:** Step size in Hz (see `precision` field)
 - **Locked:** true if lowcut cannot be changed
 
 ### polarity
 - **Description:** Signal polarity (phase invert).
-- **Value Type:** bool (true = inverted, false = normal)
+- **dataType:** bool (true = inverted, false = normal)
 - **Locked:** true if polarity cannot be changed
 
 ### phantomPower
 - **Description:** Enables or disables phantom power.
-- **Value Type:** bool
+- **dataType:** bool
 - **Locked:** true if phantom power cannot be changed
 
 ### rfPower
 - **Description:** RF level of a connected RF receiver (read-only). *NOT* Transmitting Power
 - **Unit:** dB or %
-- **Value Type:** int (dB) or int (percent, 0-100)
+- **dataType:** int (dB) or int (percent, 0-100)
 - **Locked:** Always true
 
 ### rfEnable
 - **Description:** Enables or disables a connected RF transmitter.
-- **Value Type:** bool
+- **dataType:** bool
 - **Locked:** true if RF enable cannot be changed
 
 ### batteryLevel
 - **Description:** Battery level of the end device (read-only).
 - **Unit:** %
-- **Value Type:** int (0-100)
+- **dataType:** int (0-100)
 - **Locked:** Always true
 
 ---
@@ -86,17 +86,17 @@ The following parameters are only present in device-level ParameterInfoResponse 
 
 ### model
 - **Description:** Model name of the device.
-- **Value Type:** string
+- **dataType:** string
 - **Locked:** Always true
 
 ### deviceType
 - **Description:** Type of device (recommended values: digitalStageBox, wirelessReceiver, mixer, dsp, computer).
-- **Value Type:** string
+- **dataType:** string
 - **Locked:** Always true
 
 ### preampCount
 - **Description:** The number of preamps on the device.
-- **Value Type:** int
+- **dataType:** int
 - **Required:** Yes, only for device-level ParameterInfoResponse (preampIndex: -1)
 
 ---
@@ -112,7 +112,7 @@ All messages are JSON objects with the following top-level fields:
 - `transmittingDevice`: The Dante name of the device sending the message.
 - `receivingDevice`: The Dante name of the device receiving the message (not present for multicast messages).
 
-For most message types, the payload is an array called `messages`, containing one or more message objects. Each object in this array must have a `messageType` field indicating its type.
+For most message types, the payload is an array called `messages`, containing one or more message objects. Each object in this array must have a `messageType` field indicating its type. For `ParameterResponse`, the objects in `messages` do not have a `messageType` field, but instead contain parameter data as shown in the examples.
 
 
 
@@ -138,7 +138,7 @@ Virgil uses the following message types for communication between devices. Each 
 - Use `ErrorResponse` to indicate errors (invalid command, out of range, etc.).
 
 **Note:**
-- The `messages` array in each packet contains one or more message objects, each with a `messageType` field set to one of the above types. Only `ParameterResponse` uses `parameterResponses`.
+- The `messages` array in each packet contains one or more message objects, each with a `messageType` field set to one of the above types. All message types, including `ParameterResponse`, use the `messages` array (not `parameterResponses`).
 
 # Parameter Commands
 Parameter Commands are typically sent from a master device (mixer, computer, etc.) to a slave device (Digital stagebox, Preamp, etc.)  
@@ -223,7 +223,11 @@ A `ParameterResponse` message contains the following fields:
 
 ## Parameter Response Structure
 
-Each object in the `messages` array of a `ParameterResponse` includes all properties that this device supports (such as gain, pad, lowcut, etc.), using the property names and sub-values defined in the parameter list at the top of this document. Only include the properties present on the device. For the structure and sub-fields of each property, refer to the parameter definitions above.
+Each object in the `messages` array of a `ParameterResponse` includes all properties that this device supports (such as gain, pad, lowcut, etc.), using the property names and sub-values defined in the parameter list at the top of this document. Only include the properties present on the device. For the structure and sub-fields of each property, refer to the parameter definitions above. The field for the type of each parameter is `dataType` (not `valueType`).
+
+For device-level responses (where `preampIndex` is -1), the object contains `model`, `deviceType`, and `preampCount` fields, where `model` and `deviceType` are objects with `value` and `locked` fields, and `preampCount` is an integer. For preamp-level responses, the object contains `preampIndex` and parameter objects.
+
+For device-level `StatusUpdate`, the fields `model` and `deviceType` are flat strings, not objects.
 
 See the example JSON files for the exact structure for each parameter.
 

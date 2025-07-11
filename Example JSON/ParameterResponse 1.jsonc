@@ -46,6 +46,12 @@ It describes the capabilities and current state of a preamp, including supported
                 "value" : false,                   // Current value
                 "locked" : false                   // If true, cannot be changed
             },
+            "phantomPower":
+            {
+                "dataType" : "bool",
+                "value" : false,
+                "locked" : false
+            },
             "rfPower":
             {
                 "dataType" : "int",
