@@ -114,7 +114,6 @@ void SendUdp(const json& message, const sockaddr_in& dest) {
     socket_t sock = socket(AF_INET, SOCK_DGRAM, 0);
     string payload = message.dump();
     sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&dest, sizeof(dest));
-    cout << "Sent UDP message: " << endl;
     CloseSocket(sock);
 }
 
@@ -186,7 +185,6 @@ json MakeParameterResponse(int preampIndex) {
     msg["transmittingDevice"] = SLAVE_DANTE_NAME;
     msg["receivingDevice"] = "MasterDanteDeviceName";
     msg["messages"] = json::array();
-    cout << "Making ParameterResponse for preampIndex " << preampIndex << endl;
     if (preampIndex == -1) {
         json dev;
         dev["model"]["value"] = deviceInfo.model;
@@ -235,7 +233,9 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
         cout << "[EVENT] Received invalid JSON" << endl;
         // Send error response for invalid JSON
         json err = MakeErrorResponse("MalformedMessage", "Invalid JSON format");
-        SendUdp(err, src);
+        sockaddr_in fixed_src = src;
+        fixed_src.sin_port = htons(VIRGIL_PORT);
+        SendUdp(err, fixed_src);
         cout << "[EVENT] Sent ErrorResponse (invalid JSON)" << endl;
         return;
     }
@@ -243,11 +243,12 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
         cout << "[EVENT] Malformed packet (no messages array)" << endl;
         // Send error response for malformed packet
         json err = MakeErrorResponse("MalformedMessage", "Missing 'messages' array");
-        SendUdp(err, src);
+        sockaddr_in fixed_src = src;
+        fixed_src.sin_port = htons(VIRGIL_PORT);
+        SendUdp(err, fixed_src);
         cout << "[EVENT] Sent ErrorResponse (malformed packet)" << endl;
         return;
     }
-    cout << "Valid packet received";
     for (const auto& msg : j["messages"]) {
         cout << "Processing message: " << msg.dump(2) << endl;
         if (!msg.contains("messageType")) {
@@ -256,25 +257,29 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
         }
         string type = msg["messageType"];
         if (type == "ParameterRequest") {
-            cout << "Received ParameterRequest" << endl;
             int idx = msg.value("preampIndex", -1);
             cout << "[EVENT] Received ParameterRequest for preampIndex " << idx << endl;
             json resp = MakeParameterResponse(idx);
-            cout << "Sending ParameterResponse: \n" << resp.dump(2) << endl;
-            SendUdp(resp, src);
+            sockaddr_in fixed_src = src;
+            fixed_src.sin_port = htons(VIRGIL_PORT);
+            SendUdp(resp, fixed_src);
             cout << "[EVENT] Sent ParameterResponse" << endl;
         } else if (type == "StatusRequest") {
             int idx = msg.value("preampIndex", -1);
             cout << "[EVENT] Received StatusRequest for preampIndex " << idx << endl;
             json resp = MakeStatusUpdate(idx);
-            SendUdp(resp, src);
+            sockaddr_in fixed_src = src;
+            fixed_src.sin_port = htons(VIRGIL_PORT);
+            SendUdp(resp, fixed_src);
             cout << "[EVENT] Sent StatusUpdate" << endl;
         } else if (type == "ParameterCommand") {
             int idx = msg.value("preampIndex", -1);
             cout << "[EVENT] Received ParameterCommand for preampIndex " << idx << endl;
             if (idx < 0 || idx >= (int)preamps.size()) {
                 json err = MakeErrorResponse("PreampIndexInvalid", "Invalid preamp index");
-                SendUdp(err, src);
+                sockaddr_in fixed_src = src;
+                fixed_src.sin_port = htons(VIRGIL_PORT);
+                SendUdp(err, fixed_src);
                 cout << "[EVENT] Sent ErrorResponse (invalid preamp index)" << endl;
                 continue;
             }
@@ -285,7 +290,9 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                 int val = msg["gain"]["value"];
                 if (val < p["gain"]["minValue"] || val > p["gain"]["maxValue"]) {
                     json err = MakeErrorResponse("ValueOutOfRange", "Gain out of range");
-                    SendUdp(err, src);
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
                     cout << "[EVENT] Sent ErrorResponse (gain out of range)" << endl;
                     continue;
                 }
@@ -296,7 +303,9 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                 int val = msg["lowcut"]["value"];
                 if (val < p["lowcut"]["minValue"] || val > p["lowcut"]["maxValue"]) {
                     json err = MakeErrorResponse("ValueOutOfRange", "Lowcut out of range");
-                    SendUdp(err, src);
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
                     cout << "[EVENT] Sent ErrorResponse (lowcut out of range)" << endl;
                     continue;
                 }

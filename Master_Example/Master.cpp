@@ -566,9 +566,9 @@ int main()
             request["receivingDevice"] = device["name"];
             request["messages"] = json::array();
             // Device-level info
-            request["messages"].push_back({{"messageType", "parameterRequest"}, {"preampIndex", -2}});
+            request["messages"].push_back({{"messageType", "ParameterRequest"}, {"preampIndex", -2}});
             if (!SendUDP(device["ip"], virgilPort, request)) {
-                cerr << "Failed to send parameterRequest to device: " << device["name"] << endl;
+                cerr << "Failed to send ParameterRequest to device: " << device["name"] << endl;
             }
             cout << request.dump(2) << endl;
         }

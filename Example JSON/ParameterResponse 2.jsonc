@@ -12,6 +12,7 @@ It describes the device-level information such as model, device type, and dante 
     "messages" :
     [
         {
+            "messageType": "ParameterResponse", // Type of message
             "model" : {
                 "value": "PreampModelName",
                 "locked": true

@@ -12,6 +12,7 @@ It describes the capabilities and current state of a preamp, including supported
     "messages" :
     [
         {
+            "messageType": "ParameterResponse",
             "preampIndex" : 0,                    // The preamp being described
             "gain" :
             {

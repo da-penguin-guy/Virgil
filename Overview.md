@@ -142,9 +142,6 @@ Virgil uses the following message types for communication between devices. Each 
 - Use `ParameterResponse` to reply to `ParameterRequest` messages.
 - Use `ErrorResponse` to indicate errors (invalid command, out of range, etc.).
 
-**Note:**
-- The `messages` array in each packet contains one or more message objects, each with a `messageType` field set to one of the above types. All message types, including `ParameterResponse`, use the `messages` array (not `parameterResponses`).
-
 # Parameter Commands
 Parameter Commands are typically sent from a master device (mixer, computer, etc.) to a slave device (Digital stagebox, Preamp, etc.)  
 Parameter Commands only contain the information being updated in the slave device.  

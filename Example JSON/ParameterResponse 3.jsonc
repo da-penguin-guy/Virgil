@@ -14,6 +14,7 @@ It describes the capabilities and current state of a preamp, including supported
     "messages" :
     [
         {
+            "messageType": "ParameterResponse",
             "model" : {
                 "value": "PreampModelName",
                 "locked": true
