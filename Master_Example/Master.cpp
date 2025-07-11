@@ -5,6 +5,7 @@
 #include <thread>
 #include <chrono>
 #include <functional>
+#include <mutex>
 
 // Include nlohmann/json (single header library)
 // Download from: https://github.com/nlohmann/json/releases
@@ -28,8 +29,12 @@
 using json = nlohmann::json;
 using namespace std;
 
+
 atomic<bool> mdns_running{false};
 thread mdns_thread;
+atomic<bool> mdns_scanner_running{false};
+thread mdns_scanner_thread;
+mutex danteLookup_mutex;
 
 atomic<bool> net_listener_running{false};
 thread net_listener_thread;
@@ -118,45 +123,40 @@ void AdvertiseMDNS(const string& danteName, const string& function, const string
     CloseSocket(sock);
 }
 
-vector<pair<string, sockaddr_in>> ReadMDNS()
-{
+
+// mDNS scanner thread function
+void MDNSScannerThread() {
     const char* mdns_ip = "224.0.0.251";
     int mdns_port = 5353;
-
-    vector<pair<string, sockaddr_in>> results;
-
     sockaddr_in addr;
     socket_t sock = CreateSocket(SOCK_DGRAM, mdns_port, addr);
-    if (sock < 0) 
-    {
+    if (sock < 0) {
         cerr << "mDNS read socket creation failed.\n";
-        return results;
+        return;
     }
-
-    if (::bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) 
-    {
+    if (::bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
         cerr << "mDNS bind failed.\n";
         CloseSocket(sock);
-        return results;
+        return;
     }
-
     // Join mDNS multicast group
     ip_mreq mreq;
     inet_pton(AF_INET, mdns_ip, &mreq.imr_multiaddr);
     mreq.imr_interface.s_addr = INADDR_ANY;
     setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&mreq, sizeof(mreq));
-
     char buffer[4096];
-    auto start = chrono::steady_clock::now();
-    while (chrono::steady_clock::now() - start < chrono::seconds(5)) {
+    // Track last seen time for each device
+    map<string, chrono::steady_clock::time_point> lastSeen;
+    const chrono::seconds offlineTimeout(10); // If not seen for 10s, consider offline
+    while (mdns_scanner_running) {
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
         timeval timeout;
         timeout.tv_sec = 0;
         timeout.tv_usec = 500000; // 0.5 second
-
         int ready = select(sock + 1, &readfds, nullptr, nullptr, &timeout);
+        bool updated = false;
         if (ready > 0 && FD_ISSET(sock, &readfds)) {
             sockaddr_in src_addr;
             #ifdef _WIN32
@@ -164,16 +164,73 @@ vector<pair<string, sockaddr_in>> ReadMDNS()
             #else
                 socklen_t addrlen = sizeof(src_addr);
             #endif
-                int len = recvfrom(sock, buffer, sizeof(buffer) - 1, 0, (sockaddr*)&src_addr, &addrlen);
+            int len = recvfrom(sock, buffer, sizeof(buffer) - 1, 0, (sockaddr*)&src_addr, &addrlen);
             if (len > 0) {
                 buffer[len] = '\0';
-                results.emplace_back(std::string(buffer, len), src_addr);
+                // Parse and update danteLookup
+                json j;
+                try { j = json::parse(buffer, buffer + len); } catch (...) { continue; }
+                if (j.contains("serviceType") && j["serviceType"] == "_virgil._udp.local." && j["txt"]["function"] == "slave") {
+                    string serviceName = j["serviceName"];
+                    string serviceType = j["serviceType"];
+                    string danteName = serviceName.erase(serviceName.find(serviceType), serviceName.length());
+                    auto now = chrono::steady_clock::now();
+                    bool isNew = false;
+                    {
+                        lock_guard<mutex> lock(danteLookup_mutex);
+                        if (danteLookup.find(danteName) == danteLookup.end()) {
+                            danteLookup[danteName] = json::object();
+                            danteLookup[danteName]["name"] = danteName;
+                            danteLookup[danteName]["preamps"] = json::array();
+                            isNew = true;
+                        }
+                        auto& device = danteLookup[danteName];
+                        device["multicast"] = j["txt"]["multicast"];
+                        device["virgil"] = true;
+                        char ipstr[INET_ADDRSTRLEN];
+                        inet_ntop(AF_INET, &src_addr.sin_addr, ipstr, sizeof(ipstr));
+                        device["ip"] = string(ipstr);
+                    }
+                    if (isNew) {
+                        cout << "Found Virgil device: " << danteName << endl;
+                    }
+                    lastSeen[danteName] = now;
+                    updated = true;
+                }
             }
         }
+        // Check for offline devices every second
+        static auto lastCheck = chrono::steady_clock::now();
+        auto now = chrono::steady_clock::now();
+        if (now - lastCheck > chrono::seconds(1)) {
+            vector<string> toRemove;
+            for (const auto& [danteName, seenTime] : lastSeen) {
+                if (now - seenTime > offlineTimeout) {
+                    cout << "Device offline: " << danteName << endl;
+                    toRemove.push_back(danteName);
+                    lock_guard<mutex> lock(danteLookup_mutex);
+                    danteLookup.erase(danteName);
+                }
+            }
+            for (const auto& name : toRemove) lastSeen.erase(name);
+            lastCheck = now;
+        }
+        // Sleep a bit to avoid busy loop
+        this_thread::sleep_for(chrono::milliseconds(100));
     }
-
     CloseSocket(sock);
-    return results;
+}
+
+void StartMDNSScanner() {
+    mdns_scanner_running = true;
+    mdns_scanner_thread = thread(MDNSScannerThread);
+}
+
+void StopMDNSScanner() {
+    mdns_scanner_running = false;
+    if (mdns_scanner_thread.joinable()) {
+        mdns_scanner_thread.join();
+    }
 }
 
 void StartMDNS(const string& danteName, const string& function, const string& multicastBase = "") 
@@ -351,6 +408,9 @@ void StopNetListener()
 // Example handler function
 void ProcessPacket(const string& data, const sockaddr_in& src)
 {
+    char ipstr[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(src.sin_addr), ipstr, sizeof(ipstr));
+    cout << "Received packet from " << ipstr << ":" << ntohs(src.sin_port) << endl;
     // Robustly parse and handle all valid Virgil protocol responses
     json j;
     try {
@@ -417,54 +477,38 @@ int main()
         }
     #endif
 
+
     // Start mDNS advertising as a master
     StartMDNS("ExampleDevice", "master");
+    // Start mDNS scanner in a separate thread
+    StartMDNSScanner();
 
-    // Read mDNS packets for 5 seconds to discover Virgil slaves
-    auto mdns_packets = ReadMDNS();
-    for (const auto& [data, src] : mdns_packets) 
-    {
-        // Filter for Virgil slaves only
-        json j;
-        try { j = json::parse(data); } catch (...) { continue; }
-        if (j["serviceType"] == "_virgil._udp.local." && j["txt"]["function"] == "slave") 
-        {
-            // Find or create the device in our lookup
-            string serviceName = j["serviceName"];
-            string serviceType = j["serviceType"];
-            string danteName = serviceName.erase(serviceName.find(serviceType), serviceName.length());
-            if (danteLookup.find(danteName) == danteLookup.end()) {
-                danteLookup[danteName] = json::object();
-                danteLookup[danteName]["name"] = danteName;
-                danteLookup[danteName]["preamps"] = json::array();
-            }
-            auto& device = danteLookup[danteName];
-            device["multicast"] = j["txt"]["multicast"];
-            device["virgil"] = true;
-            // Optionally store IP for TCP requests
-            char ipstr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &src.sin_addr, ipstr, sizeof(ipstr));
-            device["ip"] = string(ipstr);
-        }
-    }
+    cout << "Starting mDNS scanner...\n";
+    // Wait a moment for initial scan
+    this_thread::sleep_for(chrono::seconds(5));
+
 
 
     // Print all found devices and let user select which to request data from
     vector<string> device_keys;
     cout << "Devices found:" << endl;
     int idx = 1;
-    for (auto& [key, device] : danteLookup) {
-        cout << idx << ": Name: " << device["name"];
-        if (device.contains("ip")) cout << ", IP: " << device["ip"];
-        if (device.contains("multicast")) cout << ", Multicast: " << device["multicast"];
-        cout << endl;
-        device_keys.push_back(key);
-        ++idx;
+    {
+        lock_guard<mutex> lock(danteLookup_mutex);
+        for (auto& [key, device] : danteLookup) {
+            cout << idx << ": Name: " << device["name"];
+            if (device.contains("ip")) cout << ", IP: " << device["ip"];
+            if (device.contains("multicast")) cout << ", Multicast: " << device["multicast"];
+            cout << endl;
+            device_keys.push_back(key);
+            ++idx;
+        }
     }
     if (device_keys.empty()) {
         cout << "No devices found. Exiting." << endl;
         StopNetListener();
         StopMDNS();
+        StopMDNSScanner();
         #ifdef _WIN32
         WSACleanup();
         #endif
@@ -490,34 +534,42 @@ int main()
         }
     }
 
+
     // Find all multicast addresses for selected devices
     vector<string> multicast_addresses;
-    for (int i : selected_indices) {
-        auto& device = danteLookup[device_keys[i-1]];
-        if (device["virgil"] == false) continue;
-        string base = device["multicast"];
-        multicast_addresses.push_back(base + ".-1"); // Device-level
-        multicast_addresses.push_back(base + ".-1"); // All-preamp (if protocol uses -1 for both)
-        for (const auto& preamp : device["preamps"]) {
-            multicast_addresses.push_back(base + "." + to_string(preamp["preampIndex"]));
+    {
+        lock_guard<mutex> lock(danteLookup_mutex);
+        for (int i : selected_indices) {
+            auto& device = danteLookup[device_keys[i-1]];
+            if (device["virgil"] == false) continue;
+            string base = device["multicast"];
+            multicast_addresses.push_back(base + ".-1"); // Device-level
+            multicast_addresses.push_back(base + ".-1"); // All-preamp (if protocol uses -1 for both)
+            for (const auto& preamp : device["preamps"]) {
+                multicast_addresses.push_back(base + "." + to_string(preamp["preampIndex"]));
+            }
         }
     }
+
 
     // Start the listener before sending info requests
     StartNetListener(virgilPort, multicast_addresses, ProcessPacket);
 
     // Send all status requests to selected devices
-    for (int i : selected_indices) {
-        auto& device = danteLookup[device_keys[i-1]];
-        if (device["virgil"] == false) continue;
-        json request;
-        request["transmittingDevice"] = "ExampleDevice";
-        request["receivingDevice"] = device["name"];
-        request["messages"] = json::array();
-        // Device-level info
-        request["messages"].push_back({{"messageType", "statusRequest"}, {"preampIndex", -2}});
-        if (!SendUDP(device["ip"], virgilPort, request)) {
-            cerr << "Failed to send statusRequest to device: " << device["name"] << endl;
+    {
+        lock_guard<mutex> lock(danteLookup_mutex);
+        for (int i : selected_indices) {
+            auto& device = danteLookup[device_keys[i-1]];
+            if (device["virgil"] == false) continue;
+            json request;
+            request["transmittingDevice"] = "ExampleDevice";
+            request["receivingDevice"] = device["name"];
+            request["messages"] = json::array();
+            // Device-level info
+            request["messages"].push_back({{"messageType", "statusRequest"}, {"preampIndex", -2}});
+            if (!SendUDP(device["ip"], virgilPort, request)) {
+                cerr << "Failed to send statusRequest to device: " << device["name"] << endl;
+            }
         }
     }
 
@@ -531,5 +583,6 @@ int main()
     #endif
     StopNetListener();
     StopMDNS();
+    StopMDNSScanner();
     return 0;
 }

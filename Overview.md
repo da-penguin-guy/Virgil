@@ -3,16 +3,21 @@ Virgil is composed of 5 types of communication. All will be formatted as JSON fi
 Virgil will also use mDNS to find other virgil devices.  
 The virgil port is 7889.
 
+
 # mDNS
 The service type will be "_virgil._udp.local."
 The service name will be the "{dante name}.{service type}"
 The service port will be 7889.
+
+**Masters must always be actively searching for mDNS advertisements, not just at startup.** This ensures that if a device (slave) boots up after the master, it can still be discovered and added to the system automatically. Masters should continuously listen for new mDNS packets and update their device list as new slaves appear or disappear from the network.
+
 Before advertising over mDNS, all slave devices must first scan for virgil devices and choose a unique multicast address.
 In the txt, there will be a multicast address without the last number, eg. 244.1.1  
 This is used to have multicast IDs unique to each slave device. There is not a specified way to determine the multicast ID. You can do the lowest number, a random link local approach, or something else. 
 There will also be a variable called "function" that will be either "master" "slave" or "both"  
 There will also be variables called "model" and "deviceType". More information on these can be found in the parameter section.  
 This is currently unused but may be displayed in a debug software.
+Both masters and slaves should always be advertising mDNS
 
 # Parameters
 The following parameters are supported by Virgil. Only `gain` is mandatory. If a slave device supports a feature that is currently disabled, include the corresponding parameter and set its `locked` property to `true`. Only the `value` of a parameter can be changed by a master device; other fields (such as `precision`, `minValue`, etc.) are informational and cannot be changed remotely.
