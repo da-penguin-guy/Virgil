@@ -427,7 +427,7 @@ void ProcessPacket(const string& data, const sockaddr_in& src)
     for (const json& message : j["messages"]) {
         if (!message.contains("messageType")) continue;
         string messageType = message["messageType"];
-        if (messageType == "statusUpdate" || messageType == "statusResponse" || messageType == "parameterResponse") {
+        if (messageType == "StatusUpdate" || messageType == "StatusResponse" || messageType == "ParameterResponse") {
             // Handle device-level responses (preampIndex -1 only)
             if (message.contains("preampIndex") && int(message["preampIndex"]) == -1) {
                 // Device-level info: update device fields, not preamp
@@ -543,8 +543,6 @@ int main()
             auto& device = danteLookup[device_keys[i-1]];
             if (device["virgil"] == false) continue;
             string base = device["multicast"];
-            multicast_addresses.push_back(base + ".-1"); // Device-level
-            multicast_addresses.push_back(base + ".-1"); // All-preamp (if protocol uses -1 for both)
             for (const auto& preamp : device["preamps"]) {
                 multicast_addresses.push_back(base + "." + to_string(preamp["preampIndex"]));
             }
@@ -554,6 +552,7 @@ int main()
 
     // Start the listener before sending info requests
     StartNetListener(virgilPort, multicast_addresses, ProcessPacket);
+
 
     // Send all status requests to selected devices
     {
@@ -574,9 +573,83 @@ int main()
         }
     }
 
-    // Wait for responses interactively (or for a set time)
-    cout << "Listening for responses. Press Enter to exit..." << endl;
-    cin.get();
+    // Command loop: allow user to send commands to devices/preamps
+    cout << "\nEnter commands to send to devices. Type 'exit' to quit this loop." << endl;
+    while (true) {
+        cout << "\nAvailable devices:" << endl;
+        for (size_t i = 0; i < device_keys.size(); ++i) {
+            cout << (i+1) << ": " << device_keys[i] << endl;
+        }
+        cout << "Select device number (or 'exit'): ";
+        string dev_input;
+        getline(cin, dev_input);
+        if (dev_input == "exit") break;
+        int dev_idx = stoi(dev_input) - 1;
+        if (dev_idx < 0 || dev_idx >= (int)device_keys.size()) {
+            cout << "Invalid device selection." << endl;
+            continue;
+        }
+        string dev_key = device_keys[dev_idx];
+        lock_guard<mutex> lock(danteLookup_mutex);
+        auto& device = danteLookup[dev_key];
+        cout << "Available preamps for device '" << dev_key << "':" << endl;
+        for (size_t j = 0; j < device["preamps"].size(); ++j) {
+            cout << "  " << j << ": preampIndex=" << device["preamps"][j]["preampIndex"] << endl;
+        }
+        cout << "Select preamp index (or -1 for device-level): ";
+        string preamp_input;
+        getline(cin, preamp_input);
+        if (preamp_input == "exit") break;
+        int preamp_idx = stoi(preamp_input);
+
+        // Show available properties for the selected device/preamp
+        cout << "\nAvailable properties for this selection:" << endl;
+        if (preamp_idx == -1) {
+            // Device-level properties
+            for (auto it = device.begin(); it != device.end(); ++it) {
+                if (it.key() == "name" || it.key() == "ip" || it.key() == "multicast" || it.key() == "virgil" || it.key() == "preamps") continue;
+                cout << "  " << it.key() << ": " << it.value() << endl;
+            }
+        } else if (preamp_idx >= 0 && device.contains("preamps") && preamp_idx < device["preamps"].size()) {
+            const auto& preamp = device["preamps"][preamp_idx];
+            for (auto it = preamp.begin(); it != preamp.end(); ++it) {
+                if (it.key() == "preampIndex") continue;
+                cout << "  " << it.key() << ": " << it.value() << endl;
+            }
+        } else {
+            cout << "  (No properties available for this selection)" << endl;
+        }
+
+        // Prompt for command name and value
+        cout << "Enter command name: ";
+        string cmd_name;
+        getline(cin, cmd_name);
+        if (cmd_name == "exit") break;
+        cout << "Enter command value: ";
+        string cmd_value;
+        getline(cin, cmd_value);
+        if (cmd_value == "exit") break;
+        // This example isn't doing any value validation, to test out the slave error handling
+        // For a real implementation, you would validate the command value here.
+
+        // Build and send ParameterCommand
+        json cmd_msg = {
+            {"messageType", "ParameterCommand"},
+            {"preampIndex", preamp_idx},
+            {"parameter", cmd_name},
+            {"value", cmd_value}
+        };
+        json cmd_packet;
+        cmd_packet["transmittingDevice"] = "ExampleDevice";
+        cmd_packet["receivingDevice"] = device["name"];
+        cmd_packet["messages"] = json::array({cmd_msg});
+        if (!SendUDP(device["ip"], virgilPort, cmd_packet)) {
+            cerr << "Failed to send ParameterCommand to device: " << device["name"] << endl;
+        } else {
+            cout << "Sent: " << cmd_packet.dump(2) << endl;
+        }
+    }
+
 
     // Cleanup
     #ifdef _WIN32
