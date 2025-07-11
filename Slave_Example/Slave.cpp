@@ -72,9 +72,7 @@ mutex state_mutex;
 std::atomic<bool> mdns_running{true};
 
 
-void PrintEvent(const string& msg) {
-    cout << "[EVENT] " << msg << endl;
-}
+
 
 socket_t CreateUdpSocket(int port) {
     socket_t sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -116,6 +114,7 @@ void SendUdp(const json& message, const sockaddr_in& dest) {
     socket_t sock = socket(AF_INET, SOCK_DGRAM, 0);
     string payload = message.dump();
     sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&dest, sizeof(dest));
+    cout << "Sent UDP message: " << endl;
     CloseSocket(sock);
 }
 
@@ -151,9 +150,9 @@ void AdvertiseMDNS() {
         string payload = mdns_advert.dump();
         int res = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
         if (res < 0) {
-            PrintEvent("mDNS advertisement failed");
+            cout << "[EVENT] mDNS advertisement failed" << endl;
         } else {
-            PrintEvent("mDNS advertisement sent");
+            cout << "[EVENT] mDNS advertisement sent" << endl;
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
@@ -187,6 +186,7 @@ json MakeParameterResponse(int preampIndex) {
     msg["transmittingDevice"] = SLAVE_DANTE_NAME;
     msg["receivingDevice"] = "MasterDanteDeviceName";
     msg["messages"] = json::array();
+    cout << "Making ParameterResponse for preampIndex " << preampIndex << endl;
     if (preampIndex == -1) {
         json dev;
         dev["model"]["value"] = deviceInfo.model;
@@ -232,43 +232,46 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
     try {
         j = json::parse(data);
     } catch (...) {
-        PrintEvent("Received invalid JSON");
+        cout << "[EVENT] Received invalid JSON" << endl;
         // Send error response for invalid JSON
         json err = MakeErrorResponse("MalformedMessage", "Invalid JSON format");
         SendUdp(err, src);
-        PrintEvent("Sent ErrorResponse (invalid JSON)");
+        cout << "[EVENT] Sent ErrorResponse (invalid JSON)" << endl;
         return;
     }
     if (!j.contains("messages")) {
-        PrintEvent("Malformed packet (no messages array)");
+        cout << "[EVENT] Malformed packet (no messages array)" << endl;
         // Send error response for malformed packet
         json err = MakeErrorResponse("MalformedMessage", "Missing 'messages' array");
         SendUdp(err, src);
-        PrintEvent("Sent ErrorResponse (malformed packet)");
+        cout << "[EVENT] Sent ErrorResponse (malformed packet)" << endl;
         return;
     }
+    cout << "Valid packet received";
     for (const auto& msg : j["messages"]) {
         if (!msg.contains("messageType")) continue;
         string type = msg["messageType"];
         if (type == "ParameterRequest") {
+            cout << "Received ParameterRequest" << endl;
             int idx = msg.value("preampIndex", -1);
-            PrintEvent("Received ParameterRequest for preampIndex " + to_string(idx));
+            cout << "[EVENT] Received ParameterRequest for preampIndex " << idx << endl;
             json resp = MakeParameterResponse(idx);
+            cout << "Sending ParameterResponse: \n" << resp.dump(2) << endl;
             SendUdp(resp, src);
-            PrintEvent("Sent ParameterResponse");
+            cout << "[EVENT] Sent ParameterResponse" << endl;
         } else if (type == "StatusRequest") {
             int idx = msg.value("preampIndex", -1);
-            PrintEvent("Received StatusRequest for preampIndex " + to_string(idx));
+            cout << "[EVENT] Received StatusRequest for preampIndex " << idx << endl;
             json resp = MakeStatusUpdate(idx);
             SendUdp(resp, src);
-            PrintEvent("Sent StatusUpdate");
+            cout << "[EVENT] Sent StatusUpdate" << endl;
         } else if (type == "ParameterCommand") {
             int idx = msg.value("preampIndex", -1);
-            PrintEvent("Received ParameterCommand for preampIndex " + to_string(idx));
+            cout << "[EVENT] Received ParameterCommand for preampIndex " << idx << endl;
             if (idx < 0 || idx >= (int)preamps.size()) {
                 json err = MakeErrorResponse("PreampIndexInvalid", "Invalid preamp index");
                 SendUdp(err, src);
-                PrintEvent("Sent ErrorResponse (invalid preamp index)");
+                cout << "[EVENT] Sent ErrorResponse (invalid preamp index)" << endl;
                 continue;
             }
             bool changed = false;
@@ -279,7 +282,7 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                 if (val < p["gain"]["minValue"] || val > p["gain"]["maxValue"]) {
                     json err = MakeErrorResponse("ValueOutOfRange", "Gain out of range");
                     SendUdp(err, src);
-                    PrintEvent("Sent ErrorResponse (gain out of range)");
+                    cout << "[EVENT] Sent ErrorResponse (gain out of range)" << endl;
                     continue;
                 }
                 p["gain"]["value"] = val;
@@ -290,7 +293,7 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                 if (val < p["lowcut"]["minValue"] || val > p["lowcut"]["maxValue"]) {
                     json err = MakeErrorResponse("ValueOutOfRange", "Lowcut out of range");
                     SendUdp(err, src);
-                    PrintEvent("Sent ErrorResponse (lowcut out of range)");
+                    cout << "[EVENT] Sent ErrorResponse (lowcut out of range)" << endl;
                     continue;
                 }
                 p["lowcut"]["value"] = val;
@@ -298,7 +301,7 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
             }
             // Add more parameter handling as needed
             if (changed) {
-                PrintEvent("Parameter changed, sending StatusUpdate");
+                cout << "[EVENT] Parameter changed, sending StatusUpdate" << endl;
                 json update = MakeStatusUpdate(idx);
                 // Multicast to all masters
                 string mcast_ip = string(MULTICAST_BASE) + "." + to_string(idx);
@@ -334,7 +337,7 @@ int main() {
         if (mdns_thread.joinable()) mdns_thread.join();
         return 0;
     }
-    PrintEvent("Slave listening on UDP port " + to_string(VIRGIL_PORT));
+    cout << "[EVENT] Slave listening on UDP port " << VIRGIL_PORT << endl;
     char buffer[4096];
     while (true) {
         sockaddr_in src_addr;

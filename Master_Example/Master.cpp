@@ -570,6 +570,7 @@ int main()
             if (!SendUDP(device["ip"], virgilPort, request)) {
                 cerr << "Failed to send statusRequest to device: " << device["name"] << endl;
             }
+            cout << request.dump(2) << endl;
         }
     }
 
