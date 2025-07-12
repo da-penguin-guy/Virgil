@@ -419,6 +419,7 @@ void ProcessPacket(const string& data, const sockaddr_in& src)
         cerr << "Received invalid JSON packet.\n";
         return;
     }
+    cout << "Data: " << j.dump(2) << endl << endl;
     if (!j.contains("transmittingDevice") || !j.contains("messages")) {
         cerr << "Malformed Virgil packet.\n";
         return;
@@ -462,6 +463,7 @@ void ProcessPacket(const string& data, const sockaddr_in& src)
             cerr << "Received error from device: " << j["transmittingDevice"] << ": " << message.dump() << endl;
         }
         // Add more messageType handling as needed
+        cout << "Device Info: " << device.dump(2) << endl;
     }
 }
 

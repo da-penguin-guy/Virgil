@@ -187,6 +187,7 @@ json MakeParameterResponse(int preampIndex) {
     msg["messages"] = json::array();
     if (preampIndex == -1) {
         json dev;
+        dev["messageType"] = "ParameterResponse";
         dev["model"]["value"] = deviceInfo.model;
         dev["model"]["locked"] = true;
         dev["deviceType"]["value"] = deviceInfo.deviceType;
@@ -196,6 +197,7 @@ json MakeParameterResponse(int preampIndex) {
     } else if (preampIndex == -2) {
         // -2: include device-level info and all preamps
         json dev;
+        dev["messageType"] = "ParameterResponse";
         dev["model"]["value"] = deviceInfo.model;
         dev["model"]["locked"] = true;
         dev["deviceType"]["value"] = deviceInfo.deviceType;
