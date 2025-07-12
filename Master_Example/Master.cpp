@@ -46,7 +46,7 @@ int virgilPort = 7889;
 //Here, we have a preexisting list of Dante devices we are subscribed to
 //You would get this from your preexisting Dante code
 //I'm just making up a format to make my life easier
-map<string,json> danteLookup = {};
+map<string,json> danteLookup = {{"ExampleSlave", json::object()}};
 
 
 socket_t CreateSocket(int type, int port, sockaddr_in& addr) 
@@ -481,7 +481,7 @@ int main()
 
 
     // Start mDNS advertising as a master
-    StartMDNS("ExampleDevice", "master");
+    StartMDNS("ExampleMaster", "master");
     // Start mDNS scanner in a separate thread
     StartMDNSScanner();
 
@@ -563,7 +563,7 @@ int main()
             auto& device = danteLookup[device_keys[i-1]];
             if (device["virgil"] == false) continue;
             json request;
-            request["transmittingDevice"] = "ExampleDevice";
+            request["transmittingDevice"] = "ExampleMaster";
             request["receivingDevice"] = device["name"];
             request["messages"] = json::array();
             // Device-level info
@@ -642,7 +642,7 @@ int main()
             {"value", cmd_value}
         };
         json cmd_packet;
-        cmd_packet["transmittingDevice"] = "ExampleDevice";
+        cmd_packet["transmittingDevice"] = "ExampleMaster";
         cmd_packet["receivingDevice"] = device["name"];
         cmd_packet["messages"] = json::array({cmd_msg});
         if (!SendUDP(device["ip"], virgilPort, cmd_packet)) {

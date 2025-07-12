@@ -25,7 +25,7 @@ using namespace std;
 
 constexpr int VIRGIL_PORT = 7889;
 constexpr char MULTICAST_BASE[] = "244.1.1";
-constexpr char SLAVE_DANTE_NAME[] = "SlaveDanteDeviceName";
+constexpr char SLAVE_DANTE_NAME[] = "ExampleSlave";
 
 
 struct Preamp : public json {
