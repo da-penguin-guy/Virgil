@@ -46,7 +46,7 @@ int virgilPort = 7889;
 //Here, we have a preexisting list of Dante devices we are subscribed to
 //You would get this from your preexisting Dante code
 //I'm just making up a format to make my life easier
-map<string,json> danteLookup = {{"ExampleSlave", json::object()}};
+map<string,json> danteLookup = {{"ExampleSlave",{}}};
 
 
 socket_t CreateSocket(int type, int port, sockaddr_in& addr) 
@@ -436,10 +436,6 @@ void ProcessPacket(const string& data, const sockaddr_in& src)
                 msgCopy.erase("preampIndex");
                 msgCopy.erase("messageType");
                 device.update(msgCopy);
-                // If preampCount is present, update device's preampCount
-                if (msgCopy.contains("preampCount")) {
-                    device["preampCount"] = msgCopy["preampCount"];
-                }
                 continue;
             }
             // Ignore responses with preampIndex -2 (should never occur)

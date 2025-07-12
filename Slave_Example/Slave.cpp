@@ -46,15 +46,6 @@ struct Preamp : public json {
         (*this)["phantomPower"] = {
             {"dataType", "bool"}, {"value", false}, {"locked", false}
         };
-        (*this)["rfPower"] = {
-            {"dataType", "int"}, {"unit", "dB"}, {"value", -60}, {"locked", true}
-        };
-        (*this)["rfEnable"] = {
-            {"dataType", "bool"}, {"value", false}, {"locked", true}
-        };
-        (*this)["batteryLevel"] = {
-            {"dataType", "int"}, {"unit", "%"}, {"value", 100}, {"locked", true}
-        };
     }
     int index() const { return (*this)["preampIndex"]; }
 };
@@ -188,6 +179,7 @@ json MakeParameterResponse(int preampIndex) {
     if (preampIndex == -1) {
         json dev;
         dev["messageType"] = "ParameterResponse";
+        dev["preampIndex"] = -1;
         dev["model"]["value"] = deviceInfo.model;
         dev["model"]["locked"] = true;
         dev["deviceType"]["value"] = deviceInfo.deviceType;
@@ -198,6 +190,7 @@ json MakeParameterResponse(int preampIndex) {
         // -2: include device-level info and all preamps
         json dev;
         dev["messageType"] = "ParameterResponse";
+        dev["preampIndex"] = -1;
         dev["model"]["value"] = deviceInfo.model;
         dev["model"]["locked"] = true;
         dev["deviceType"]["value"] = deviceInfo.deviceType;
