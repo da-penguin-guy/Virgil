@@ -6,10 +6,27 @@
 #include <chrono>
 #include <functional>
 #include <mutex>
-
-// Include nlohmann/json (single header library)
-// Download from: https://github.com/nlohmann/json/releases
 #include "nlohmann/json.hpp"
+
+
+
+
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
+#define NK_INCLUDE_DEFAULT_ALLOCATOR
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_INCLUDE_STANDARD_IO
+#define NK_INCLUDE_STANDARD_VARARGS
+#define NK_IMPLEMENTATION
+
+
+
+
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+#include "nuklear/nuklear.h"
+#define NK_GLFW_GL3_IMPLEMENTATION
+#include "nuklear/demo/glfw_opengl3/nuklear_glfw_gl3.h"
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -26,35 +43,94 @@
     typedef int socket_t;
 #endif
 
+
 using json = nlohmann::json;
 using namespace std;
 
+// This function will be called with received data and sender info
+using PacketHandler = function<void(const string&, const sockaddr_in&)>;
 
-atomic<bool> mdns_running{false};
-thread mdns_thread;
-atomic<bool> mdns_scanner_running{false};
-thread mdns_scanner_thread;
+// Forward declarations
+socket_t CreateSocket(int type, int port, sockaddr_in& addr);
+void CloseSocket(socket_t& sock);
+void MDNSWorkerThread();
+void StartMDNSWorker(const string& danteName, const string& function, const string& multicastBase = "");
+void StopMDNSWorker();
+bool SendUDP(const string& ip, int port, const json& message);
+bool SendMulticast(const string& multicast_ip, int port, const json& message);
+void NetListener(int port, const vector<string> multicast_ips, PacketHandler handler);
+void StartNetListener(int port, const vector<string> multicast_ips, PacketHandler handler);
+void StopNetListener();
+void SendParameterRequest(json& device);
+void ProcessPacket(const string& data, const sockaddr_in& src);
+void CleanupAndExit(int code);
+void SetupWindow();
+
+
+// Consolidated mDNS worker: advertises and scans in one thread
+struct MDNSWorkerConfig {
+    string danteName;
+    string function;
+    string multicastBase;
+};
+atomic<bool> mdns_worker_running{false};
+thread mdns_worker_thread;
+MDNSWorkerConfig mdns_worker_config;
+
 mutex danteLookup_mutex;
 
 atomic<bool> net_listener_running{false};
 thread net_listener_thread;
 
 // This function will be called with received data and sender info
-using PacketHandler = std::function<void(const std::string&, const sockaddr_in&)>;
+using PacketHandler = function<void(const string&, const sockaddr_in&)>;
 
 int virgilPort = 7889;
 //Here, we have a preexisting list of Dante devices we are subscribed to
 //You would get this from your preexisting Dante code
 //I'm just making up a format to make my life easier
-map<string,json> danteLookup = {{"ExampleSlave",{}}};
+map<string,json> danteLookup = {{"ExampleSlave",{}}}; // Preexisting Dante device list; add more as needed
+
+// Custom streambuf to redirect cout to Nuklear log buffer
+class NuklearLogBuf : public streambuf {
+public:
+    NuklearLogBuf(char* buf, int bufsize, int* len_ptr, streambuf* orig_buf)
+        : buffer(buf), bufsize(bufsize), len_ptr(len_ptr), orig_buf(orig_buf) {}
+protected:
+    int overflow(int c) override {
+        if (c == EOF) return 0;
+        if (*len_ptr < bufsize - 1) {
+            buffer[(*len_ptr)++] = (char)c;
+            buffer[*len_ptr] = '\0';
+        }
+        if (orig_buf) orig_buf->sputc(c);
+        return c;
+    }
+    streamsize xsputn(const char* s, streamsize n) override {
+        int to_copy = (int)min<streamsize>(n, bufsize - 1 - *len_ptr);
+        if (to_copy > 0) {
+            memcpy(buffer + *len_ptr, s, to_copy);
+            *len_ptr += to_copy;
+            buffer[*len_ptr] = '\0';
+        }
+        if (orig_buf) orig_buf->sputn(s, n);
+        return n;
+    }
+private:
+    char* buffer;
+    int bufsize;
+    int* len_ptr;
+    streambuf* orig_buf;
+};
 
 
-socket_t CreateSocket(int type, int port, sockaddr_in& addr) 
-{
+
+socket_t CreateSocket(int type, int port, sockaddr_in& addr) {
     socket_t sock = socket(AF_INET, type, 0);
     if (sock < 0) 
     {
         cerr << "Socket creation failed.\n";
+        return INVALID_SOCKET; // Return invalid socket instead of continuing
     }
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -69,8 +145,7 @@ socket_t CreateSocket(int type, int port, sockaddr_in& addr)
     return sock;
 }
 
-void CloseSocket(socket_t& sock) 
-{
+void CloseSocket(socket_t& sock) {
     #ifdef _WIN32
         closesocket(sock);
     #else   
@@ -78,85 +153,79 @@ void CloseSocket(socket_t& sock)
     #endif
 }
 
-void AdvertiseMDNS(const string& danteName, const string& function, const string& multicastBase = "")
-{
+
+void MDNSWorkerThread() {
+    this_thread::sleep_for(chrono::seconds(1)); // Wait for gui to initialize
+    cout << "Starting mDNS scanner...\n";
     const char* mdns_ip = "224.0.0.251";
     int mdns_port = 5353;
-
+    string danteName = mdns_worker_config.danteName;
+    string function = mdns_worker_config.function;
+    string multicastBase = mdns_worker_config.multicastBase;
     string serviceType = "_virgil._udp.local.";
 
+    // Prepare advertisement payload
     json mdns_advert;
     mdns_advert["serviceName"] = danteName + "." + serviceType;
     mdns_advert["serviceType"] = serviceType;
     mdns_advert["port"] = virgilPort;
-    if(multicastBase.empty() && function == "slave") 
-    {
-        cerr << "Slaves must have a multicast base\n";
+    if(multicastBase.empty() && function == "slave") {
+        cerr << "[MDNSWorkerThread] Slaves must have a multicast base\n";
         return;
-    }
-    else if(function == "slave")
-    {
+    } else if(function == "slave") {
         mdns_advert["txt"]["multicast"] = multicastBase;
     }
     mdns_advert["txt"]["function"] = function;
     mdns_advert["txt"]["model"] = "virgilExample";
     mdns_advert["txt"]["deviceType"] = "computer";
-
-    sockaddr_in addr;
-    socket_t sock = CreateSocket(SOCK_DGRAM, mdns_port, addr);
-
-    // Set destination address to multicast group
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(mdns_port);
-    inet_pton(AF_INET, mdns_ip, &addr.sin_addr);
-
     string payload = mdns_advert.dump();
 
-    while (mdns_running) {
-        int res = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
-        if (res < 0) {
-            cerr << "mDNS advertisement failed.\n";
-        }
-        this_thread::sleep_for(chrono::seconds(1));
-    }
-
-    CloseSocket(sock);
-}
-
-
-// mDNS scanner thread function
-void MDNSScannerThread() {
-    const char* mdns_ip = "224.0.0.251";
-    int mdns_port = 5353;
+    // Setup socket for both send and receive
     sockaddr_in addr;
     socket_t sock = CreateSocket(SOCK_DGRAM, mdns_port, addr);
-    if (sock < 0) {
-        cerr << "mDNS read socket creation failed.\n";
+    if (sock == INVALID_SOCKET) {
+        cerr << "[MDNSWorkerThread] mDNS socket creation failed.\n";
         return;
     }
     if (::bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        cerr << "mDNS bind failed.\n";
+        cerr << "[MDNSWorkerThread] mDNS bind failed.\n";
         CloseSocket(sock);
         return;
     }
-    // Join mDNS multicast group
     ip_mreq mreq;
     inet_pton(AF_INET, mdns_ip, &mreq.imr_multiaddr);
     mreq.imr_interface.s_addr = INADDR_ANY;
-    setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&mreq, sizeof(mreq));
+    int setopt_result = setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&mreq, sizeof(mreq));
+
+
+    // Set destination address for sending
+    sockaddr_in send_addr = {};
+    send_addr.sin_family = AF_INET;
+    send_addr.sin_port = htons(mdns_port);
+    inet_pton(AF_INET, mdns_ip, &send_addr.sin_addr);
+
     char buffer[4096];
-    // Track last seen time for each device
     map<string, chrono::steady_clock::time_point> lastSeen;
-    const chrono::seconds offlineTimeout(10); // If not seen for 10s, consider offline
-    while (mdns_scanner_running) {
+    const chrono::seconds offlineTimeout(10);
+    auto last_advertise = chrono::steady_clock::now() - chrono::seconds(2);
+    while (mdns_worker_running) {
+        // 1. Periodically advertise
+        auto now = chrono::steady_clock::now();
+        if (now - last_advertise > chrono::seconds(1)) {
+            int res = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&send_addr, sizeof(send_addr));
+            if (res < 0) {
+                cerr << "[MDNSWorkerThread] mDNS advertisement failed.\n";
+            }
+            last_advertise = now;
+        }
+        // 2. Poll for incoming packets
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
         timeval timeout;
         timeout.tv_sec = 0;
-        timeout.tv_usec = 500000; // 0.5 second
+        timeout.tv_usec = 200000; // 0.2s
         int ready = select(sock + 1, &readfds, nullptr, nullptr, &timeout);
-        bool updated = false;
         if (ready > 0 && FD_ISSET(sock, &readfds)) {
             sockaddr_in src_addr;
             #ifdef _WIN32
@@ -167,83 +236,85 @@ void MDNSScannerThread() {
             int len = recvfrom(sock, buffer, sizeof(buffer) - 1, 0, (sockaddr*)&src_addr, &addrlen);
             if (len > 0) {
                 buffer[len] = '\0';
-                // Parse and update danteLookup
+                // Only print JSON parse error if it looks like JSON
+                bool looks_like_json = (buffer[0] == '{' || buffer[0] == '[');
+                char ipstr[INET_ADDRSTRLEN];
+                inet_ntop(AF_INET, &src_addr.sin_addr, ipstr, sizeof(ipstr));
                 json j;
-                try { j = json::parse(buffer, buffer + len); } catch (...) { continue; }
-                if (j.contains("serviceType") && j["serviceType"] == "_virgil._udp.local." && j["txt"]["function"] == "slave") {
+                try {
+                    j = json::parse(buffer, buffer + len);
+                } catch (...) {
+                    if (looks_like_json) {
+                        cerr << "[MDNSWorkerThread] JSON parse error from " << ipstr << endl;
+                    }
+                    continue;
+                }
+                if (
+                    j.contains("serviceType") && j["serviceType"].is_string() && j["serviceType"] == "_virgil._udp.local."
+                    && j.contains("serviceName") && j["serviceName"].is_string()
+                    && j.contains("txt") && j["txt"].is_object()
+                    && j["txt"].contains("function") && j["txt"]["function"].is_string() && j["txt"]["function"] == "slave"
+                    && j["txt"].contains("multicast") && j["txt"]["multicast"].is_string()
+                ) {
                     string serviceName = j["serviceName"];
                     string serviceType = j["serviceType"];
                     string danteName = serviceName.erase(serviceName.find(serviceType), serviceName.length());
-                    auto now = chrono::steady_clock::now();
-                    bool isNew = false;
-                    {
-                        lock_guard<mutex> lock(danteLookup_mutex);
-                        if (danteLookup.find(danteName) == danteLookup.end()) {
-                            danteLookup[danteName] = json::object();
-                            danteLookup[danteName]["name"] = danteName;
-                            danteLookup[danteName]["preamps"] = json::array();
-                            isNew = true;
-                        }
+                    if (!danteName.empty() && danteName.back() == '.') {
+                        danteName.pop_back();
+                    }
+                    auto now2 = chrono::steady_clock::now();
+                    lock_guard<mutex> lock(danteLookup_mutex);
+                    if (danteLookup.find(danteName) != danteLookup.end()) {
                         auto& device = danteLookup[danteName];
+                        device["name"] = danteName;
                         device["multicast"] = j["txt"]["multicast"];
                         device["virgil"] = true;
-                        char ipstr[INET_ADDRSTRLEN];
+                        // ...existing code...
                         inet_ntop(AF_INET, &src_addr.sin_addr, ipstr, sizeof(ipstr));
+                        if(device.contains("ip") && device["ip"] != string(ipstr)) {
+                            cout << "IP changed for device: " << danteName << " from " << device["ip"] << " to " << ipstr << endl;
+                        }
                         device["ip"] = string(ipstr);
+                        if (!device.value("isFound", false)) {
+                            cout << "Device found: " << danteName << endl;
+                            SendParameterRequest(device);
+                        }
+                        device["isFound"] = true;
+                        lastSeen[danteName] = now2;
                     }
-                    if (isNew) {
-                        cout << "Found Virgil device: " << danteName << endl;
-                    }
-                    lastSeen[danteName] = now;
-                    updated = true;
                 }
             }
         }
-        // Check for offline devices every second
+        // 3. Check for offline devices every second
         static auto lastCheck = chrono::steady_clock::now();
-        auto now = chrono::steady_clock::now();
+        now = chrono::steady_clock::now();
         if (now - lastCheck > chrono::seconds(1)) {
-            vector<string> toRemove;
             for (const auto& [danteName, seenTime] : lastSeen) {
                 if (now - seenTime > offlineTimeout) {
                     cout << "Device offline: " << danteName << endl;
-                    toRemove.push_back(danteName);
-                    lock_guard<mutex> lock(danteLookup_mutex);
-                    danteLookup.erase(danteName);
+                    auto& device = danteLookup[danteName];
+                    device["isFound"] = false;
                 }
             }
-            for (const auto& name : toRemove) lastSeen.erase(name);
             lastCheck = now;
         }
-        // Sleep a bit to avoid busy loop
-        this_thread::sleep_for(chrono::milliseconds(100));
+        this_thread::sleep_for(chrono::milliseconds(50));
     }
     CloseSocket(sock);
 }
 
-void StartMDNSScanner() {
-    mdns_scanner_running = true;
-    mdns_scanner_thread = thread(MDNSScannerThread);
+void StartMDNSWorker(const string& danteName, const string& function, const string& multicastBase) {
+    mdns_worker_config.danteName = danteName;
+    mdns_worker_config.function = function;
+    mdns_worker_config.multicastBase = multicastBase;
+    mdns_worker_running = true;
+    mdns_worker_thread = thread(MDNSWorkerThread);
 }
 
-void StopMDNSScanner() {
-    mdns_scanner_running = false;
-    if (mdns_scanner_thread.joinable()) {
-        mdns_scanner_thread.join();
-    }
-}
-
-void StartMDNS(const string& danteName, const string& function, const string& multicastBase = "") 
-{
-    mdns_running = true;
-    mdns_thread = std::thread(AdvertiseMDNS, danteName, function, multicastBase);
-}
-
-void StopMDNS() 
-{
-    mdns_running = false;
-    if (mdns_thread.joinable()) {
-        mdns_thread.join();
+void StopMDNSWorker() {
+    mdns_worker_running = false;
+    if (mdns_worker_thread.joinable()) {
+        mdns_worker_thread.join();
     }
 }
 
@@ -269,10 +340,14 @@ bool SendUDP(const string& ip, int port, const json& message) {
     return true;
 }
 
-bool SendMulticast(const string& multicast_ip, int port, const json& message) 
-{
+bool SendMulticast(const string& multicast_ip, int port, const json& message) {
     sockaddr_in addr;
     socket_t sock = CreateSocket(SOCK_DGRAM, port, addr);
+    
+    if (sock == INVALID_SOCKET) {
+        cerr << "SendMulticast socket creation failed.\n";
+        return false;
+    }
 
     // Set the destination multicast IP
     if (inet_pton(AF_INET, multicast_ip.c_str(), &addr.sin_addr) != 1) {
@@ -281,7 +356,7 @@ bool SendMulticast(const string& multicast_ip, int port, const json& message)
         return false;
     }
 
-    std::string messageDump = message.dump();
+    string messageDump = message.dump();
     int send_result = sendto(sock, messageDump.c_str(), messageDump.size(), 0, (sockaddr*)&addr, sizeof(addr));
     if (send_result < 0) 
     {
@@ -294,28 +369,21 @@ bool SendMulticast(const string& multicast_ip, int port, const json& message)
     return true;
 }
 
-void NetListener(int port, const vector<string> multicast_ips, PacketHandler handler)
-{
-    sockaddr_in tcp_addr;
-    socket_t tcp_sock = CreateSocket(SOCK_STREAM, port,tcp_addr);
-
-    if (::bind(tcp_sock, (sockaddr*)&tcp_addr, sizeof(tcp_addr)) < 0) 
-    {
-        cerr << "TCP bind failed.\n";
-        CloseSocket(tcp_sock);
-        return;
-    }
-    listen(tcp_sock, 5);
-
+void NetListener(int port, const vector<string> multicast_ips, PacketHandler handler){
+    this_thread::sleep_for(chrono::seconds(1)); // Wait for gui to initialize
     // --- Multicast UDP socket setup ---
     sockaddr_in udp_addr;
     socket_t udp_sock = CreateSocket(SOCK_DGRAM, port, udp_addr);
+    
+    if (udp_sock == INVALID_SOCKET) {
+        cerr << "NetListener socket creation failed.\n";
+        return;
+    }
 
     if (::bind(udp_sock, (sockaddr*)&udp_addr, sizeof(udp_addr)) < 0) 
     {
         cerr << "UDP bind failed.\n";
         CloseSocket(udp_sock);
-        CloseSocket(tcp_sock);
         return;
     }
 
@@ -334,38 +402,14 @@ void NetListener(int port, const vector<string> multicast_ips, PacketHandler han
     while (net_listener_running) 
     {
         FD_ZERO(&readfds);
-        FD_SET(tcp_sock, &readfds);
         FD_SET(udp_sock, &readfds);
-        socket_t maxfd = (tcp_sock > udp_sock) ? tcp_sock : udp_sock;
 
         timeval timeout;
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
 
-        int activity = select(maxfd + 1, &readfds, nullptr, nullptr, &timeout);
+        int activity = select(udp_sock + 1, &readfds, nullptr, nullptr, &timeout);
         if (activity < 0) continue;
-
-        // --- TCP: Accept and read ---
-        if (FD_ISSET(tcp_sock, &readfds)) 
-        {
-            sockaddr_in client_addr;
-            #ifdef _WIN32
-                int addrlen = sizeof(client_addr);
-            #else
-                socklen_t addrlen = sizeof(client_addr);
-            #endif
-            socket_t client_sock = accept(tcp_sock, (sockaddr*)&client_addr, &addrlen);
-            if (client_sock >= 0) 
-            {
-                int len = recv(client_sock, buffer, sizeof(buffer) - 1, 0);
-                if (len > 0) 
-                {
-                    buffer[len] = '\0';
-                    handler(string(buffer, len), client_addr);
-                }
-                CloseSocket(client_sock);
-            }
-        }
 
         // --- Multicast UDP: Receive ---
         if (FD_ISSET(udp_sock, &readfds)) 
@@ -385,29 +429,51 @@ void NetListener(int port, const vector<string> multicast_ips, PacketHandler han
         }
     }
 
-    CloseSocket(tcp_sock);
     CloseSocket(udp_sock);
 }
 
 // Start the threaded listener
-void StartNetListener(int port, const vector<string> multicast_ips, PacketHandler handler)
-{
+void StartNetListener(int port, const vector<string> multicast_ips, PacketHandler handler){
     net_listener_running = true;
     net_listener_thread = thread(NetListener, port, multicast_ips, handler);
 }
 
 // Stop the threaded listener
-void StopNetListener()
-{
+void StopNetListener(){
     net_listener_running = false;
     if (net_listener_thread.joinable()) {
         net_listener_thread.join();
     }
 }
 
+void SendParameterRequest(json& device){
+    // Do not lock danteLookup_mutex here; caller must hold the lock
+    if (!device.is_object() || !device.value("virgil", false)) {
+        cerr << "[SendParameterRequest] Device is not valid or not a Virgil device. Skipping.\n";
+        return;
+    }
+    if (!device.contains("ip") || !device["ip"].is_string() || device["ip"].get<string>().empty()) {
+        cerr << "[SendParameterRequest] Device missing valid 'ip' field: " << device.dump() << endl;
+        return;
+    }
+    if (!device.contains("name") || !device["name"].is_string() || device["name"].get<string>().empty()) {
+        cerr << "[SendParameterRequest] Device missing valid 'name' field: " << device.dump() << endl;
+        return;
+    }
+    json request;
+    request["transmittingDevice"] = "ExampleMaster";
+    request["receivingDevice"] = device["name"];
+    request["messages"] = json::array();
+    // Device-level info
+    request["messages"].push_back({{"messageType", "ParameterRequest"}, {"preampIndex", -2}});
+    cout << "[SendParameterRequest] Sending to IP: " << device["ip"] << ", name: " << device["name"] << ", payload: " << request.dump() << endl;
+    if (!SendUDP(device["ip"], virgilPort, request)) {
+        cerr << "[SendParameterRequest] Failed to send ParameterRequest to device: " << device["name"] << endl;
+    }
+}
+
 // Example handler function
-void ProcessPacket(const string& data, const sockaddr_in& src)
-{
+void ProcessPacket(const string& data, const sockaddr_in& src){
     char ipstr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(src.sin_addr), ipstr, sizeof(ipstr));
     cout << "Received packet from " << ipstr << ":" << ntohs(src.sin_port) << endl;
@@ -419,12 +485,18 @@ void ProcessPacket(const string& data, const sockaddr_in& src)
         cerr << "Received invalid JSON packet.\n";
         return;
     }
-    cout << "Data: " << j.dump(2) << endl << endl;
     if (!j.contains("transmittingDevice") || !j.contains("messages")) {
         cerr << "Malformed Virgil packet.\n";
         return;
     }
-    json& device = danteLookup[j["transmittingDevice"]];
+    const string& txDevice = j["transmittingDevice"];
+    auto it = danteLookup.find(txDevice);
+    if (it == danteLookup.end()) {
+        cerr << "Ignoring packet from unknown device: " << txDevice << endl;
+        return;
+    }
+    cout << "Data: " << j.dump(2) << endl;
+    json& device = it->second;
     for (const json& message : j["messages"]) {
         if (!message.contains("messageType")) continue;
         string messageType = message["messageType"];
@@ -436,17 +508,25 @@ void ProcessPacket(const string& data, const sockaddr_in& src)
                 msgCopy.erase("preampIndex");
                 msgCopy.erase("messageType");
                 device.update(msgCopy);
-                continue;
             }
             // Ignore responses with preampIndex -2 (should never occur)
-            if (message.contains("preampIndex") && int(message["preampIndex"]) == -2) {
+            else if (message.contains("preampIndex") && int(message["preampIndex"]) == -2) {
                 cerr << "Warning: Received response with preampIndex -2 (invalid per protocol). Ignoring.\n";
-                continue;
             }
             // Handle preamp-level responses (preampIndex >= 0)
-            if (message.contains("preampIndex")) {
+            else if (message.contains("preampIndex")) {
                 int idx = message["preampIndex"];
-                if (idx >= 0 && device.contains("preamps") && idx < device["preamps"].size()) {
+                cout << "[DEBUG] Received preamp message: idx=" << idx << ", messageType=" << messageType << endl;
+                if (idx >= 0) {
+                    cout << "[DEBUG] Processing preamp update: idx=" << idx << ", message=" << message.dump() << endl;
+                    // Ensure 'preamps' array exists
+                    if (!device.contains("preamps") || !device["preamps"].is_array()) {
+                        device["preamps"] = json::array();
+                    }
+                    // Resize array if needed
+                    while ((int)device["preamps"].size() <= idx) {
+                        device["preamps"].push_back(json::object());
+                    }
                     json msgCopy = message;
                     msgCopy.erase("preampIndex");
                     msgCopy.erase("messageType");
@@ -456,11 +536,150 @@ void ProcessPacket(const string& data, const sockaddr_in& src)
         }
         // Optionally handle errors, info, etc. here
         else if (messageType == "error") {
-            cerr << "Received error from device: " << j["transmittingDevice"] << ": " << message.dump() << endl;
+            cerr << "Received error from device: " << txDevice << ": " << message.dump() << endl;
         }
-        // Add more messageType handling as needed
-        cout << "Device Info: " << device.dump(2) << endl;
     }
+}
+
+void CleanupAndExit(int code) {
+    #ifdef _WIN32
+    WSACleanup();
+    #endif
+    StopNetListener();
+    StopMDNSWorker();
+    exit(code);
+}
+
+void SetupWindow() {
+    if (!glfwInit()) {
+        cerr << "Failed to initialize GLFW" << endl;
+        return;
+    }
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#ifdef __APPLE__
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#endif
+    GLFWwindow* win = glfwCreateWindow(900, 700, "Master Controller", nullptr, nullptr);
+    if (!win) {
+        cerr << "Failed to create GLFW window" << endl;
+        glfwTerminate();
+        return;
+    }
+    glfwMakeContextCurrent(win);
+    // Initialize GLEW after context is current
+    if (glewInit() != GLEW_OK) {
+        cerr << "Failed to initialize GLEW" << endl;
+        glfwDestroyWindow(win);
+        glfwTerminate();
+        return;
+    }
+    struct nk_context* ctx = nk_glfw3_init(win, NK_GLFW3_INSTALL_CALLBACKS);
+    if (!ctx) {
+        cerr << "Failed to initialize Nuklear context" << endl;
+        glfwDestroyWindow(win);
+        glfwTerminate();
+        return;
+    }
+
+    /* Font setup: use Raleway-Bold.ttf from extra_font */
+    struct nk_font_atlas* atlas;
+    nk_glfw3_font_stash_begin(&atlas);
+    struct nk_font* rfont = nullptr;
+    
+    // Try to load custom font, fall back to default if it fails
+    try {
+        rfont = nk_font_atlas_add_from_file(atlas, "nuklear/extra_font/Raleway-Bold.ttf", 16.0f, 0);
+    } catch (...) {
+        cerr << "Warning: Could not load custom font, using default" << endl;
+    }
+    
+    nk_glfw3_font_stash_end();
+    if (rfont) {
+        nk_style_set_font(ctx, &rfont->handle);
+    } else {
+        cout << "Using default font" << endl;
+    }
+
+    struct nk_colorf bg;
+    bg.r = 0.10f; bg.g = 0.18f; bg.b = 0.24f; bg.a = 1.0f;
+
+    // Simple static log buffer for demonstration
+    static char log_buffer[2048] = "";
+    static int log_len = (int)strlen(log_buffer);
+
+    // Redirect cout to Nuklear log
+    streambuf* old_cout = cout.rdbuf();
+    static NuklearLogBuf logbuf(log_buffer, sizeof(log_buffer), &log_len, old_cout);
+    cout.rdbuf(&logbuf);
+
+    static int selected_device = 0;
+    vector<string> device_names;
+    while (!glfwWindowShouldClose(win)) {
+        // Update device_names every frame, only include devices where isFound is true
+        device_names.clear();
+        {
+            lock_guard<mutex> lock(danteLookup_mutex);
+            for (const auto& pair : danteLookup) {
+                if (pair.second.is_object() && pair.second.value("isFound", false)) {
+                    device_names.push_back(pair.first);
+                }
+            }
+        }
+        glfwPollEvents();
+        nk_glfw3_new_frame();
+        int width, height;
+        glfwGetFramebufferSize(win, &width, &height);
+        if (nk_begin(ctx, "ButtonWindow", nk_rect(0, 0, (float)width, (float)height), NK_WINDOW_NO_SCROLLBAR|NK_WINDOW_BORDER)) {
+            float half_width = width * 0.5f;
+            float left_width = half_width;
+            float right_width = width - half_width;
+            float combo_height = 36.0f;
+            float group_height = (float)height;
+
+            // Layout: one row, two columns (left/right)
+            float col_widths[2] = { left_width, right_width };
+            nk_layout_row(ctx, NK_STATIC, group_height, 2, col_widths);
+
+            // --- Left column ---
+            if (nk_group_begin(ctx, "LeftCol", NK_WINDOW_NO_SCROLLBAR)) {
+                // Combo box at the top
+                nk_layout_row_static(ctx, combo_height, left_width - 20, 1);
+                if (!device_names.empty()) {
+                    if (selected_device >= (int)device_names.size()) selected_device = 0;
+                    vector<const char*> device_cstrs;
+                    for (const auto& name : device_names) device_cstrs.push_back(name.c_str());
+                    selected_device = nk_combo(ctx, device_cstrs.data(), (int)device_cstrs.size(), selected_device, 20, nk_vec2(left_width - 20, 100));
+                } else {
+                    nk_label(ctx, "No devices", NK_TEXT_LEFT);
+                }
+                nk_group_end(ctx);
+            }
+
+            // --- Right column ---
+            if (nk_group_begin(ctx, "RightCol", NK_WINDOW_NO_SCROLLBAR)) {
+                // Log/console fills the right column
+                nk_layout_row_dynamic(ctx, (float)height - 20 - 24, 1);
+                nk_edit_string_zero_terminated(ctx, NK_EDIT_READ_ONLY|NK_EDIT_BOX, log_buffer, (int)sizeof(log_buffer), nk_filter_default);
+                nk_group_end(ctx);
+            }
+        }
+        nk_end(ctx);
+        glViewport(0, 0, width, height);
+        glClearColor(bg.r, bg.g, bg.b, bg.a);
+        glClear(GL_COLOR_BUFFER_BIT);
+        nk_glfw3_render(NK_ANTI_ALIASING_ON, 512 * 1024, 128 * 1024);
+        glfwSwapBuffers(win);
+    }
+    nk_glfw3_shutdown();
+    glfwDestroyWindow(win);
+    glfwTerminate();
+    // Restore cout
+    cout.rdbuf(old_cout);
+
+    // Close the program when the window is closed
+    CleanupAndExit(0);
 }
 
 int main() 
@@ -477,184 +696,11 @@ int main()
 
 
     // Start mDNS advertising as a master
-    StartMDNS("ExampleMaster", "master");
-    // Start mDNS scanner in a separate thread
-    StartMDNSScanner();
-
-    cout << "Starting mDNS scanner...\n";
-    // Wait a moment for initial scan
-    this_thread::sleep_for(chrono::seconds(5));
-
-
-
-    // Print all found devices and let user select which to request data from
-    vector<string> device_keys;
-    cout << "Devices found:" << endl;
-    int idx = 1;
-    {
-        lock_guard<mutex> lock(danteLookup_mutex);
-        for (auto& [key, device] : danteLookup) {
-            cout << idx << ": Name: " << device["name"];
-            if (device.contains("ip")) cout << ", IP: " << device["ip"];
-            if (device.contains("multicast")) cout << ", Multicast: " << device["multicast"];
-            cout << endl;
-            device_keys.push_back(key);
-            ++idx;
-        }
-    }
-    if (device_keys.empty()) {
-        cout << "No devices found. Exiting." << endl;
-        StopNetListener();
-        StopMDNS();
-        StopMDNSScanner();
-        #ifdef _WIN32
-        WSACleanup();
-        #endif
-        return 0;
-    }
-    cout << "Enter device numbers to request data from (comma-separated, or 'all'): ";
-    string input;
-    getline(cin, input);
-    vector<int> selected_indices;
-    if (input == "all" || input == "ALL") {
-        for (int i = 1; i <= (int)device_keys.size(); ++i) selected_indices.push_back(i);
-    } else {
-        size_t pos = 0;
-        while (pos < input.size()) {
-            while (pos < input.size() && !isdigit(input[pos])) ++pos;
-            if (pos >= input.size()) break;
-            int num = 0;
-            while (pos < input.size() && isdigit(input[pos])) {
-                num = num * 10 + (input[pos] - '0');
-                ++pos;
-            }
-            if (num > 0 && num <= (int)device_keys.size()) selected_indices.push_back(num);
-        }
-    }
-
-
-    // Find all multicast addresses for selected devices
-    vector<string> multicast_addresses;
-    {
-        lock_guard<mutex> lock(danteLookup_mutex);
-        for (int i : selected_indices) {
-            auto& device = danteLookup[device_keys[i-1]];
-            if (device["virgil"] == false) continue;
-            string base = device["multicast"];
-            for (const auto& preamp : device["preamps"]) {
-                multicast_addresses.push_back(base + "." + to_string(preamp["preampIndex"]));
-            }
-        }
-    }
-
-
-    // Start the listener before sending info requests
-    StartNetListener(virgilPort, multicast_addresses, ProcessPacket);
-
-
-    // Send all status requests to selected devices
-    {
-        lock_guard<mutex> lock(danteLookup_mutex);
-        for (int i : selected_indices) {
-            auto& device = danteLookup[device_keys[i-1]];
-            if (device["virgil"] == false) continue;
-            json request;
-            request["transmittingDevice"] = "ExampleMaster";
-            request["receivingDevice"] = device["name"];
-            request["messages"] = json::array();
-            // Device-level info
-            request["messages"].push_back({{"messageType", "ParameterRequest"}, {"preampIndex", -2}});
-            if (!SendUDP(device["ip"], virgilPort, request)) {
-                cerr << "Failed to send ParameterRequest to device: " << device["name"] << endl;
-            }
-            cout << request.dump(2) << endl;
-        }
-    }
-
-    // Command loop: allow user to send commands to devices/preamps
-    cout << "\nEnter commands to send to devices. Type 'exit' to quit this loop." << endl;
-    while (true) {
-        cout << "\nAvailable devices:" << endl;
-        for (size_t i = 0; i < device_keys.size(); ++i) {
-            cout << (i+1) << ": " << device_keys[i] << endl;
-        }
-        cout << "Select device number (or 'exit'): ";
-        string dev_input;
-        getline(cin, dev_input);
-        if (dev_input == "exit") break;
-        int dev_idx = stoi(dev_input) - 1;
-        if (dev_idx < 0 || dev_idx >= (int)device_keys.size()) {
-            cout << "Invalid device selection." << endl;
-            continue;
-        }
-        string dev_key = device_keys[dev_idx];
-        lock_guard<mutex> lock(danteLookup_mutex);
-        auto& device = danteLookup[dev_key];
-        cout << "Available preamps for device '" << dev_key << "':" << endl;
-        for (size_t j = 0; j < device["preamps"].size(); ++j) {
-            cout << "  " << j << ": preampIndex=" << device["preamps"][j]["preampIndex"] << endl;
-        }
-        cout << "Select preamp index (or -1 for device-level): ";
-        string preamp_input;
-        getline(cin, preamp_input);
-        if (preamp_input == "exit") break;
-        int preamp_idx = stoi(preamp_input);
-
-        // Show available properties for the selected device/preamp
-        cout << "\nAvailable properties for this selection:" << endl;
-        if (preamp_idx == -1) {
-            // Device-level properties
-            for (auto it = device.begin(); it != device.end(); ++it) {
-                if (it.key() == "name" || it.key() == "ip" || it.key() == "multicast" || it.key() == "virgil" || it.key() == "preamps") continue;
-                cout << "  " << it.key() << ": " << it.value() << endl;
-            }
-        } else if (preamp_idx >= 0 && device.contains("preamps") && preamp_idx < device["preamps"].size()) {
-            const auto& preamp = device["preamps"][preamp_idx];
-            for (auto it = preamp.begin(); it != preamp.end(); ++it) {
-                if (it.key() == "preampIndex") continue;
-                cout << "  " << it.key() << ": " << it.value() << endl;
-            }
-        } else {
-            cout << "  (No properties available for this selection)" << endl;
-        }
-
-        // Prompt for command name and value
-        cout << "Enter command name: ";
-        string cmd_name;
-        getline(cin, cmd_name);
-        if (cmd_name == "exit") break;
-        cout << "Enter command value: ";
-        string cmd_value;
-        getline(cin, cmd_value);
-        if (cmd_value == "exit") break;
-        // This example isn't doing any value validation, to test out the slave error handling
-        // For a real implementation, you would validate the command value here.
-
-        // Build and send ParameterCommand
-        json cmd_msg = {
-            {"messageType", "ParameterCommand"},
-            {"preampIndex", preamp_idx},
-            {"parameter", cmd_name},
-            {"value", cmd_value}
-        };
-        json cmd_packet;
-        cmd_packet["transmittingDevice"] = "ExampleMaster";
-        cmd_packet["receivingDevice"] = device["name"];
-        cmd_packet["messages"] = json::array({cmd_msg});
-        if (!SendUDP(device["ip"], virgilPort, cmd_packet)) {
-            cerr << "Failed to send ParameterCommand to device: " << device["name"] << endl;
-        } else {
-            cout << "Sent: " << cmd_packet.dump(2) << endl;
-        }
-    }
-
-
-    // Cleanup
-    #ifdef _WIN32
-    WSACleanup();
-    #endif
-    StopNetListener();
-    StopMDNS();
-    StopMDNSScanner();
-    return 0;
+    StartNetListener(virgilPort, vector<string>{}, ProcessPacket);
+    StartMDNSWorker("ExampleMaster", "master");
+    
+    SetupWindow();
+    
+    CleanupAndExit(0);
 }
+

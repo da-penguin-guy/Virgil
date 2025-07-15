@@ -140,9 +140,7 @@ void AdvertiseMDNS() {
         string payload = mdns_advert.dump();
         int res = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
         if (res < 0) {
-            cout << "[EVENT] mDNS advertisement failed" << endl;
-        } else {
-            cout << "[EVENT] mDNS advertisement sent" << endl;
+            cerr << "[EVENT] mDNS advertisement failed" << endl;
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
@@ -198,11 +196,16 @@ json MakeParameterResponse(int preampIndex) {
         dev["preampCount"] = deviceInfo.preampCount;
         msg["messages"].push_back(dev);
         for (const Preamp& p : preamps) {
-            msg["messages"].push_back(p);
+            dev.clear();
+            dev["messageType"] = "ParameterResponse";
+            dev.update(p);
+            msg["messages"].push_back(dev);
         }
     } else if (preampIndex >= 0 && preampIndex < (int)preamps.size()) {
-        const Preamp& p = preamps[preampIndex];
-        msg["messages"].push_back(p);
+        json p_msg;
+        p_msg["messageType"] = "ParameterResponse";
+        p_msg.update(preamps[preampIndex]);
+        msg["messages"].push_back(p_msg);
     }
     return msg;
 }
