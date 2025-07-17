@@ -180,7 +180,6 @@ void scan_mdns(const string& expected_ip, DeviceIdentity& identity) {
                         string key = j["serviceName"].get<string>() + "@" + src_ip;
                         if (seen.count(key)) continue;
                         seen.insert(key);
-                        cout << "Found Virgil mDNS from " << src_ip << ":\n" << j.dump(2) << endl;
                         log_detailed("INFO", "MDNS", "Found Virgil mDNS service", 
                             "From: " + src_ip + ", Service: " + j["serviceName"].get<string>() + 
                             "\n    Full JSON:\n" + j.dump(2));
@@ -292,31 +291,23 @@ public:
         try {
             auto j = json::parse(msg);
             formatted_msg = j.dump(2);
-            // Print the message type for easy identification
-            if (j.contains("messages") && j["messages"].is_array() && !j["messages"].empty()) {
-                if (j["messages"][0].contains("messageType")) {
-                    cout << "[TESTER] Sending " << j["messages"][0]["messageType"] << " message" << endl;
-                }
-            }
         } catch (...) {
             // If parsing fails, use original message
         }
         
-        cout << "[TESTER] Sending UDP packet to slave..." << endl;
         log_detailed("SEND", "UDP", "Sending message", "Size: " + to_string(msg.size()) + " bytes\n    Content:\n" + formatted_msg);
         int send_result = sendto(sock, msg.c_str(), (int)msg.size(), 0, (sockaddr*)&addr, sizeof(addr));
         if (send_result == SOCKET_ERROR) {
             int error = WSAGetLastError();
-            cout << "[TESTER] Send failed with error: " << error << endl;
             log_detailed("ERROR", "UDP", "Send failed", "WSA Error: " + to_string(error));
         } else {
-            cout << "[TESTER] Successfully sent " << send_result << " bytes" << endl;
             log_detailed("DEBUG", "UDP", "Send successful", "Bytes sent: " + to_string(send_result));
         }
     }
     string recv() {
         char buf[BUF_SIZE] = {0};
-        int len = sizeof(addr);
+        sockaddr_in recv_addr;  // Use separate address structure for receiving
+        int len = sizeof(recv_addr);
         
         // Get and print the bound port every time we wait for a packet
         sockaddr_in bound_addr;
@@ -326,11 +317,9 @@ public:
             listening_port = ntohs(bound_addr.sin_port);
         }
         
-        // Log attempt to receive with port information
-        cout << "[UDP] Waiting for response on port " << listening_port << "..." << endl;
         log_detailed("DEBUG", "UDP", "Attempting to receive data", "Listening on port " + to_string(listening_port) + ", waiting for response...");
         
-        int ret = recvfrom(sock, buf, BUF_SIZE, 0, (sockaddr*)&addr, &len);
+        int ret = recvfrom(sock, buf, BUF_SIZE, 0, (sockaddr*)&recv_addr, &len);
         
         if (ret <= 0) {
             int error = WSAGetLastError();
@@ -351,10 +340,10 @@ public:
             return "";
         }
         
-        // Log source address
+        // Log source address (using recv_addr, not addr)
         char src_ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &addr.sin_addr, src_ip, sizeof(src_ip));
-        int src_port = ntohs(addr.sin_port);
+        inet_ntop(AF_INET, &recv_addr.sin_addr, src_ip, sizeof(src_ip));
+        int src_port = ntohs(recv_addr.sin_port);
         
         string response(buf, ret);
 
