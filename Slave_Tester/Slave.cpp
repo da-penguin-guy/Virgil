@@ -123,11 +123,11 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
                 char ipstr[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &src_addr.sin_addr, ipstr, sizeof(ipstr));
                 std::string src_ip(ipstr);
+                if (src_ip != expected_ip) continue;
                 
                 log_detailed("DEBUG", "MDNS", "Received mDNS packet", 
                     "From: " + src_ip + ", Size: " + std::to_string(len) + " bytes\n    Raw data: " + std::string(buffer, len));
-                
-                if (src_ip != expected_ip) continue;
+            
                 try {
                     auto j = json::parse(buffer, buffer + len);
                     if (
@@ -243,10 +243,20 @@ public:
         memset(&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
-        inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
+        int inet_result = inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
+        if (inet_result != 1) {
+            log_detailed("ERROR", "UDP", "Invalid IP address", "IP: " + ip + ", inet_pton result: " + std::to_string(inet_result));
+            throw std::runtime_error("Invalid IP address: " + ip);
+        }
+        
         DWORD timeout = 2000; // 2s
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
-        log_detailed("INFO", "UDP", "UDP client initialized successfully", "Socket ready for communication");
+        
+        // Log the resolved address
+        char resolved_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &addr.sin_addr, resolved_ip, sizeof(resolved_ip));
+        log_detailed("INFO", "UDP", "UDP client initialized successfully", 
+                    "Socket ready for communication to " + std::string(resolved_ip) + ":" + std::to_string(port));
     }
     ~UdpClient() { closesocket(sock); WSACleanup(); }
     void send(const std::string& msg) {
@@ -260,18 +270,53 @@ public:
         }
         
         log_detailed("SEND", "UDP", "Sending message", "Size: " + std::to_string(msg.size()) + " bytes\n    Content:\n" + formatted_msg);
-        sendto(sock, msg.c_str(), (int)msg.size(), 0, (sockaddr*)&addr, sizeof(addr));
+        int send_result = sendto(sock, msg.c_str(), (int)msg.size(), 0, (sockaddr*)&addr, sizeof(addr));
+        if (send_result == SOCKET_ERROR) {
+            int error = WSAGetLastError();
+            log_detailed("ERROR", "UDP", "Send failed", "WSA Error: " + std::to_string(error));
+        } else {
+            log_detailed("DEBUG", "UDP", "Send successful", "Bytes sent: " + std::to_string(send_result));
+        }
     }
     std::string recv() {
         char buf[BUF_SIZE] = {0};
         int len = sizeof(addr);
+        
+        // Log attempt to receive
+        log_detailed("DEBUG", "UDP", "Attempting to receive data", "Waiting for response...");
+        
         int ret = recvfrom(sock, buf, BUF_SIZE, 0, (sockaddr*)&addr, &len);
+        
         if (ret <= 0) {
-            log_detailed("RECV", "UDP", "No data received", "Timeout or error, return code: " + std::to_string(ret));
+            int error = WSAGetLastError();
+            std::string error_desc;
+            if (ret == 0) {
+                error_desc = "Connection closed gracefully";
+            } else if (error == WSAETIMEDOUT) {
+                error_desc = "Timeout (WSAETIMEDOUT)";
+            } else if (error == WSAECONNRESET) {
+                error_desc = "Connection reset (WSAECONNRESET)";
+            } else if (error == WSAEINTR) {
+                error_desc = "Interrupted (WSAEINTR)";
+            } else {
+                error_desc = "Error code " + std::to_string(error);
+            }
+            
+            log_detailed("RECV", "UDP", "No data received", "Return code: " + std::to_string(ret) + ", WSA Error: " + error_desc);
             return "";
         }
-        std::string response(buf, ret);
         
+        // Log source address
+        char src_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &addr.sin_addr, src_ip, sizeof(src_ip));
+        int src_port = ntohs(addr.sin_port);
+        
+        std::string response(buf, ret);
+
+        // Log all raw data received for debugging
+        log_detailed("DEBUG", "UDP", "Raw data received", "From: " + std::string(src_ip) + ":" + std::to_string(src_port) + 
+                    ", Size: " + std::to_string(ret) + " bytes\n    Raw: " + response);
+
         std::string formatted_response = response;
         // Try to format JSON for logging
         try {
@@ -280,8 +325,9 @@ public:
         } catch (...) {
             // If parsing fails, use original response
         }
-        
-        log_detailed("RECV", "UDP", "Received message", "Size: " + std::to_string(ret) + " bytes\n    Content:\n" + formatted_response);
+
+        log_detailed("RECV", "UDP", "Received message", "From: " + std::string(src_ip) + ":" + std::to_string(src_port) + 
+                    ", Size: " + std::to_string(ret) + " bytes\n    Content:\n" + formatted_response);
         return response;
     }
 private:

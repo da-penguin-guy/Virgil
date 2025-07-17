@@ -30,7 +30,7 @@ constexpr char SLAVE_DANTE_NAME[] = "ExampleSlave";
 
 struct Preamp : public json {
     Preamp(int idx = 0) {
-        (*this)["preampIndex"] = idx;
+        (*this)["channelIndex"] = idx;
         (*this)["gain"] = {
             {"dataType", "int"}, {"unit", "dB"}, {"precision", 1}, {"value", 0}, {"minValue", -5}, {"maxValue", 50}, {"locked", false}
         };
@@ -40,14 +40,41 @@ struct Preamp : public json {
         (*this)["lowcut"] = {
             {"dataType", "int"}, {"unit", "Hz"}, {"precision", 1}, {"value", 0}, {"minValue", 0}, {"maxValue", 100}, {"locked", false}
         };
+        (*this)["lowcutEnable"] = {
+            {"dataType", "bool"}, {"value", false}, {"locked", false}
+        };
         (*this)["polarity"] = {
             {"dataType", "bool"}, {"value", false}, {"locked", false}
         };
         (*this)["phantomPower"] = {
             {"dataType", "bool"}, {"value", false}, {"locked", false}
         };
+        (*this)["rfEnable"] = {
+            {"dataType", "bool"}, {"value", true}, {"locked", false}
+        };
+        (*this)["transmitPower"] = {
+            {"dataType", "enum"}, {"value", "high"}, {"enumValues", json::array({"low", "medium", "high"})}, {"locked", false}
+        };
+        (*this)["transmitterConnected"] = {
+            {"dataType", "bool"}, {"value", true}, {"locked", true}
+        };
+        (*this)["squelch"] = {
+            {"dataType", "int"}, {"unit", "dB"}, {"precision", 1}, {"value", -60}, {"minValue", -80}, {"maxValue", -20}, {"locked", false}
+        };
+        (*this)["subDevice"] = {
+            {"dataType", "string"}, {"value", "handheld"}, {"locked", true}
+        };
+        (*this)["audioLevel"] = {
+            {"dataType", "float"}, {"unit", "dB"}, {"precision", 0.1}, {"value", -20.5}, {"locked", true}
+        };
+        (*this)["rfLevel"] = {
+            {"dataType", "float"}, {"unit", "dB"}, {"precision", 0.1}, {"value", -45.2}, {"locked", true}
+        };
+        (*this)["batteryLevel"] = {
+            {"dataType", "percent"}, {"precision", 1}, {"value", 85}, {"minValue", 0}, {"maxValue", 100}, {"locked", true}
+        };
     }
-    int index() const { return (*this)["preampIndex"]; }
+    int index() const { return (*this)["channelIndex"]; }
 };
 
 struct DeviceInfo {
@@ -104,7 +131,19 @@ void CloseSocket(socket_t sock) {
 void SendUdp(const json& message, const sockaddr_in& dest) {
     socket_t sock = socket(AF_INET, SOCK_DGRAM, 0);
     string payload = message.dump();
-    sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&dest, sizeof(dest));
+    
+    // Log the response being sent
+    char ipstr[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &dest.sin_addr, ipstr, sizeof(ipstr));
+    cout << "[DEBUG] Sending UDP response to " << ipstr << ":" << ntohs(dest.sin_port) << endl;
+    cout << "[DEBUG] Response data: " << message.dump(2) << endl;
+    
+    int result = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&dest, sizeof(dest));
+    if (result < 0) {
+        cout << "[ERROR] Failed to send UDP response, error: " << result << endl;
+    } else {
+        cout << "[DEBUG] Successfully sent " << result << " bytes" << endl;
+    }
     CloseSocket(sock);
 }
 
@@ -164,20 +203,32 @@ json MakeStatusUpdate(int channelIndex) {
     lock_guard<mutex> lock(state_mutex);
     json msg;
     msg["transmittingDevice"] = SLAVE_DANTE_NAME;
+    msg["receivingDevice"] = "MasterDanteDeviceName"; // Add receiving device
     msg["messages"] = json::array();
     if (channelIndex >= 0 && channelIndex < (int)preamps.size()) {
         json m;
         m["messageType"] = "StatusUpdate";
         m["channelIndex"] = channelIndex;
-        m.update(preamps[channelIndex]);
+        // Copy all parameters from the preamp except channelIndex to avoid duplication
+        for (auto& [key, value] : preamps[channelIndex].items()) {
+            if (key != "channelIndex") {
+                m[key] = value;
+            }
+        }
         msg["messages"].push_back(m);
     } else if (channelIndex == -1) {
-        json m;
-        m["messageType"] = "StatusUpdate";
-        m["channelIndex"] = -1;
-        m["model"] = deviceInfo.model;
-        m["deviceType"] = deviceInfo.deviceType;
-        msg["messages"].push_back(m);
+        // Send status for all channels
+        for (int i = 0; i < (int)preamps.size(); ++i) {
+            json m;
+            m["messageType"] = "StatusUpdate";
+            m["channelIndex"] = i;
+            for (auto& [key, value] : preamps[i].items()) {
+                if (key != "channelIndex") {
+                    m[key] = value;
+                }
+            }
+            msg["messages"].push_back(m);
+        }
     }
     return msg;
 }
@@ -222,7 +273,12 @@ json MakeParameterResponse(int channelIndex) {
             json channel_msg;
             channel_msg["messageType"] = "ParameterResponse";
             channel_msg["channelIndex"] = p.index();
-            channel_msg.update(p);
+            // Copy all parameters except channelIndex to avoid duplication
+            for (auto& [key, value] : p.items()) {
+                if (key != "channelIndex") {
+                    channel_msg[key] = value;
+                }
+            }
             msg["messages"].push_back(channel_msg);
         }
     } else if (channelIndex >= 0 && channelIndex < (int)preamps.size()) {
@@ -230,7 +286,12 @@ json MakeParameterResponse(int channelIndex) {
         json p_msg;
         p_msg["messageType"] = "ParameterResponse";
         p_msg["channelIndex"] = channelIndex;
-        p_msg.update(preamps[channelIndex]);
+        // Copy all parameters except channelIndex to avoid duplication
+        for (auto& [key, value] : preamps[channelIndex].items()) {
+            if (key != "channelIndex") {
+                p_msg[key] = value;
+            }
+        }
         msg["messages"].push_back(p_msg);
     } else {
         // Invalid channel index - should send error
@@ -240,9 +301,16 @@ json MakeParameterResponse(int channelIndex) {
 }
 
 void HandlePacket(const string& data, const sockaddr_in& src) {
+    // Log all received packets
+    char ipstr[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &src.sin_addr, ipstr, sizeof(ipstr));
+    cout << "[DEBUG] Received packet from " << ipstr << ":" << ntohs(src.sin_port) << endl;
+    cout << "[DEBUG] Raw data: " << data << endl;
+    
     json j;
     try {
         j = json::parse(data);
+        cout << "[DEBUG] Parsed JSON: " << j.dump(2) << endl;
     } catch (...) {
         cout << "[EVENT] Received invalid JSON" << endl;
         // Send error response for invalid JSON
@@ -350,6 +418,77 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                 }
                 p["lowcut"]["value"] = val;
                 changed = true;
+            }
+            if (msg.contains("pad")) {
+                bool val = msg["pad"]["value"];
+                p["pad"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("polarity")) {
+                bool val = msg["polarity"]["value"];
+                p["polarity"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("phantomPower")) {
+                bool val = msg["phantomPower"]["value"];
+                p["phantomPower"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("lowcutEnable")) {
+                bool val = msg["lowcutEnable"]["value"];
+                p["lowcutEnable"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("rfEnable")) {
+                bool val = msg["rfEnable"]["value"];
+                p["rfEnable"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("squelch")) {
+                int val = msg["squelch"]["value"];
+                if (val < p["squelch"]["minValue"] || val > p["squelch"]["maxValue"]) {
+                    json err = MakeErrorResponse("ValueOutOfRange", "Squelch out of range");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    cout << "[EVENT] Sent ErrorResponse (squelch out of range)" << endl;
+                    continue;
+                }
+                p["squelch"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("transmitPower")) {
+                string val = msg["transmitPower"]["value"];
+                // Validate enum value
+                bool valid = false;
+                for (const auto& enumVal : p["transmitPower"]["enumValues"]) {
+                    if (enumVal == val) {
+                        valid = true;
+                        break;
+                    }
+                }
+                if (!valid) {
+                    json err = MakeErrorResponse("ValueOutOfRange", "Invalid transmitPower value");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    cout << "[EVENT] Sent ErrorResponse (invalid transmitPower)" << endl;
+                    continue;
+                }
+                p["transmitPower"]["value"] = val;
+                changed = true;
+            }
+            // Check for attempts to change locked parameters
+            vector<string> locked_params = {"transmitterConnected", "subDevice", "audioLevel", "rfLevel", "batteryLevel"};
+            for (const string& param : locked_params) {
+                if (msg.contains(param)) {
+                    json err = MakeErrorResponse("ParameterLocked", "Parameter " + param + " is locked");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    cout << "[EVENT] Sent ErrorResponse (parameter locked: " << param << ")" << endl;
+                    continue;
+                }
             }
             // Add more parameter handling as needed
             if (changed) {

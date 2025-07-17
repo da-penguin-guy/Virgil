@@ -4,9 +4,6 @@
     <ClCompile Include="C:\Users\robot\OneDrive\Desktop\Virgil\Master_Example\Master.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="C:\Users\robot\OneDrive\Desktop\Virgil\Master_Example\VirgilNet.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="C:\Users\robot\OneDrive\Desktop\Virgil\Master_Example\CMakeLists.txt" />
