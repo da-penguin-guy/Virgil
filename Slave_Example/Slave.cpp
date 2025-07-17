@@ -405,7 +405,6 @@ int main() {
             char ipstr[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &src_addr.sin_addr, ipstr, sizeof(ipstr));
             cout << "[DEBUG] Received UDP packet from " << ipstr << ":" << ntohs(src_addr.sin_port) << ":\n";
-            cout << string(buffer, len) << endl;
             HandlePacket(string(buffer, len), src_addr);
         }
     }
