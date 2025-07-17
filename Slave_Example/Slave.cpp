@@ -304,8 +304,8 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
     // Log all received packets
     char ipstr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &src.sin_addr, ipstr, sizeof(ipstr));
-    cout << "[DEBUG] Received packet from " << ipstr << ":" << ntohs(src.sin_port) << endl;
-    cout << "[DEBUG] Raw data: " << data << endl;
+    cout << "[HANDLER] Starting to process packet from " << ipstr << ":" << ntohs(src.sin_port) << endl;
+    cout << "[HANDLER] Raw data: " << data << endl;
     
     json j;
     try {
@@ -347,6 +347,7 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
             continue;
         }
         string type = msg["messageType"];
+        cout << "[HANDLER] Processing message type: " << type << endl;
         if (type == "ParameterRequest") {
             int idx = msg.value("channelIndex", -1);
             cout << "[EVENT] Received ParameterRequest for channelIndex " << idx << endl;
@@ -500,6 +501,7 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
             }
         }
     }
+    cout << "[HANDLER] Finished processing packet from " << ipstr << ":" << ntohs(src.sin_port) << endl;
 }
 
 int main() {
@@ -530,6 +532,7 @@ int main() {
     }
     cout << "[EVENT] Slave listening on UDP port " << VIRGIL_PORT << endl;
     char buffer[4096];
+    int packet_count = 0;
     while (true) {
         sockaddr_in src_addr;
         #ifdef _WIN32
@@ -537,14 +540,26 @@ int main() {
         #else
             socklen_t addrlen = sizeof(src_addr);
         #endif
+        cout << "[DEBUG] Waiting for UDP packet... (received " << packet_count << " packets so far)" << endl;
         int len = recvfrom(sock, buffer, sizeof(buffer)-1, 0, (sockaddr*)&src_addr, &addrlen);
         if (len > 0) {
+            packet_count++;
             buffer[len] = '\0';
             // Debug: print all received UDP packets (raw)
             char ipstr[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &src_addr.sin_addr, ipstr, sizeof(ipstr));
-            cout << "[DEBUG] Received UDP packet from " << ipstr << ":" << ntohs(src_addr.sin_port) << ":\n";
+            cout << "[DEBUG] Packet #" << packet_count << ": Received UDP packet from " << ipstr << ":" << ntohs(src_addr.sin_port) << " (size: " << len << " bytes)" << endl;
+            cout << "[DEBUG] Raw data: " << string(buffer, len) << endl;
             HandlePacket(string(buffer, len), src_addr);
+            cout << "[DEBUG] Finished processing packet #" << packet_count << ", ready for next packet" << endl;
+        } else {
+            int error = 0;
+            #ifdef _WIN32
+                error = WSAGetLastError();
+            #else
+                error = errno;
+            #endif
+            cout << "[DEBUG] recvfrom returned " << len << ", error: " << error << endl;
         }
     }
     CloseSocket(sock);

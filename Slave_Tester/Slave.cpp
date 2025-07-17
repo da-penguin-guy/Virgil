@@ -14,59 +14,61 @@
 #pragma comment(lib, "ws2_32.lib")
 #include "nlohmann/json.hpp"
 
+
+using namespace std;
 using json = nlohmann::json;
-using namespace std::chrono_literals;
+using namespace chrono_literals;
 
 constexpr int VIRGIL_PORT = 7889;
 constexpr int BUF_SIZE = 4096;
 
 // Global log file stream
-std::ofstream log_file;
+ofstream log_file;
 
 // Utility function to get current timestamp
-std::string get_timestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+string get_timestamp() {
+    auto now = chrono::system_clock::now();
+    auto time_t = chrono::system_clock::to_time_t(now);
+    auto ms = chrono::duration_cast<chrono::milliseconds>(
         now.time_since_epoch()) % 1000;
     
-    std::stringstream ss;
-    ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
-    ss << "." << std::setfill('0') << std::setw(3) << ms.count();
+    stringstream ss;
+    ss << put_time(localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    ss << "." << setfill('0') << setw(3) << ms.count();
     return ss.str();
 }
 
 // Enhanced logging function
-void log_detailed(const std::string& level, const std::string& category, const std::string& message, const std::string& data = "") {
+void log_detailed(const string& level, const string& category, const string& message, const string& data = "") {
     if (log_file.is_open()) {
         log_file << "[" << get_timestamp() << "] [" << level << "] [" << category << "] " << message;
         if (!data.empty()) {
             log_file << "\n    DATA: " << data;
         }
-        log_file << std::endl;
+        log_file << endl;
         log_file.flush(); // Ensure immediate write to disk
     }
 }
 
 
 struct DeviceIdentity {
-    std::string danteName;
-    std::string model;
-    std::string deviceType;
-    std::vector<int> channelIndices;
+    string danteName;
+    string model;
+    string deviceType;
+    vector<int> channelIndices;
     bool initialized = false;
 };
 
-void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
-    std::cout << "\n--- mDNS Scan for Virgil Devices ---\n";
+void scan_mdns(const string& expected_ip, DeviceIdentity& identity) {
+    cout << "\n--- mDNS Scan for Virgil Devices ---\n";
     log_detailed("INFO", "MDNS", "Starting mDNS scan for Virgil devices", "Expected IP: " + expected_ip);
     
     // Initialize Winsock for mDNS
     WSADATA wsaData;
     int wsa_result = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (wsa_result != 0) {
-        std::cerr << "[mDNS] WSAStartup failed with error: " << wsa_result << "\n";
-        log_detailed("ERROR", "MDNS", "WSAStartup failed", "Error code: " + std::to_string(wsa_result));
+        cerr << "[mDNS] WSAStartup failed with error: " << wsa_result << "\n";
+        log_detailed("ERROR", "MDNS", "WSAStartup failed", "Error code: " + to_string(wsa_result));
         return;
     }
     
@@ -75,8 +77,8 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
     SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock == INVALID_SOCKET) {
         int error = WSAGetLastError();
-        std::cerr << "[mDNS] Socket creation failed with WSA error: " << error << "\n";
-        log_detailed("ERROR", "MDNS", "Socket creation failed", "WSA Error: " + std::to_string(error));
+        cerr << "[mDNS] Socket creation failed with WSA error: " << error << "\n";
+        log_detailed("ERROR", "MDNS", "Socket creation failed", "WSA Error: " + to_string(error));
         WSACleanup();
         return;
     }
@@ -89,14 +91,14 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
     BOOL reuse = TRUE;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse));
     
-    if (bind(sock, (sockaddr*)&addr, sizeof(addr)) < 0) {
+    if (::bind(sock, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
         int error = WSAGetLastError();
-        std::cerr << "[mDNS] Bind failed with error: " << error << ". Continuing without mDNS scan.\n";
+        cerr << "[mDNS] Bind failed with error: " << error << ". Continuing without mDNS scan.\n";
         log_detailed("WARN", "MDNS", "Bind failed, skipping mDNS scan", 
-            "WSA Error: " + std::to_string(error) + " (Port 5353 may be in use by another service like Windows DNS Client or Bonjour)");
+            "WSA Error: " + to_string(error) + " (Port 5353 may be in use by another service like Windows DNS Client or Bonjour)");
         closesocket(sock);
         WSACleanup();
-        std::cout << "[mDNS] Skipping mDNS discovery due to port conflict. Proceeding with protocol tests.\n";
+        cout << "[mDNS] Skipping mDNS discovery due to port conflict. Proceeding with protocol tests.\n";
         return;
     }
     ip_mreq mreq;
@@ -105,10 +107,10 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
     setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&mreq, sizeof(mreq));
 
     char buffer[4096];
-    std::set<std::string> seen;
-    auto start = std::chrono::steady_clock::now();
-    const std::set<std::string> allowed_device_types = {"digitalStageBox", "wirelessReceiver", "wirelessTransmitter", "wirelessCombo", "mixer", "dsp", "computer"};
-    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(5)) {
+    set<string> seen;
+    auto start = chrono::steady_clock::now();
+    const set<string> allowed_device_types = {"digitalStageBox", "wirelessReceiver", "wirelessTransmitter", "wirelessCombo", "mixer", "dsp", "computer"};
+    while (chrono::steady_clock::now() - start < chrono::seconds(5)) {
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
@@ -122,11 +124,11 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
                 buffer[len] = '\0';
                 char ipstr[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &src_addr.sin_addr, ipstr, sizeof(ipstr));
-                std::string src_ip(ipstr);
+                string src_ip(ipstr);
                 if (src_ip != expected_ip) continue;
                 
                 log_detailed("DEBUG", "MDNS", "Received mDNS packet", 
-                    "From: " + src_ip + ", Size: " + std::to_string(len) + " bytes\n    Raw data: " + std::string(buffer, len));
+                    "From: " + src_ip + ", Size: " + to_string(len) + " bytes\n    Raw data: " + string(buffer, len));
             
                 try {
                     auto j = json::parse(buffer, buffer + len);
@@ -138,9 +140,9 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
                     ) {
                         const auto& txt = j["txt"];
                         bool valid = true;
-                        std::string fail_reason;
+                        string fail_reason;
                         // Required TXT fields
-                        std::vector<std::string> required = {"function", "model", "deviceType"};
+                        vector<string> required = {"function", "model", "deviceType"};
                         for (const auto& f : required) {
                             if (!txt.contains(f) || !txt[f].is_string()) {
                                 valid = false;
@@ -155,10 +157,10 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
                         // Validate deviceType
                         if (txt.contains("deviceType") && !allowed_device_types.count(txt["deviceType"])) {
                             valid = false;
-                            fail_reason += "deviceType '" + txt["deviceType"].get<std::string>() + "' is not allowed. ";
+                            fail_reason += "deviceType '" + txt["deviceType"].get<string>() + "' is not allowed. ";
                         }
                         // Validate model (must be non-empty string)
-                        if (txt.contains("model") && txt["model"].is_string() && txt["model"].get<std::string>().empty()) {
+                        if (txt.contains("model") && txt["model"].is_string() && txt["model"].get<string>().empty()) {
                             valid = false;
                             fail_reason += "model is empty. ";
                         }
@@ -168,25 +170,25 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
                                 fail_reason += "Missing or invalid 'multicast' for slave. ";
                             } else {
                                 // Validate multicast address format (should be like "244.1.1")
-                                std::string multicast = txt["multicast"].get<std::string>();
-                                if (multicast.find("244.") != 0 || std::count(multicast.begin(), multicast.end(), '.') != 2) {
+                                string multicast = txt["multicast"].get<string>();
+                                if (multicast.find("244.") != 0 || count(multicast.begin(), multicast.end(), '.') != 2) {
                                     valid = false;
                                     fail_reason += "Invalid multicast format (should be 244.x.x). ";
                                 }
                             }
                         }
-                        std::string key = j["serviceName"].get<std::string>() + "@" + src_ip;
+                        string key = j["serviceName"].get<string>() + "@" + src_ip;
                         if (seen.count(key)) continue;
                         seen.insert(key);
-                        std::cout << "Found Virgil mDNS from " << src_ip << ":\n" << j.dump(2) << std::endl;
+                        cout << "Found Virgil mDNS from " << src_ip << ":\n" << j.dump(2) << endl;
                         log_detailed("INFO", "MDNS", "Found Virgil mDNS service", 
-                            "From: " + src_ip + ", Service: " + j["serviceName"].get<std::string>() + 
+                            "From: " + src_ip + ", Service: " + j["serviceName"].get<string>() + 
                             "\n    Full JSON:\n" + j.dump(2));
                         
                         // Store and check identity
-                        std::string danteName = j["serviceName"].get<std::string>();
-                        std::string model = txt["model"].get<std::string>();
-                        std::string deviceType = txt["deviceType"].get<std::string>();
+                        string danteName = j["serviceName"].get<string>();
+                        string model = txt["model"].get<string>();
+                        string deviceType = txt["deviceType"].get<string>();
                         if (!identity.initialized) {
                             identity.danteName = danteName;
                             identity.model = model;
@@ -199,18 +201,18 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
                             if (!fail_reason.empty()) valid = false;
                         }
                         if (valid) {
-                            std::cout << "[PASS] All required mDNS fields present and valid.\n";
+                            cout << "[PASS] All required mDNS fields present and valid.\n";
                             log_detailed("PASS", "MDNS", "mDNS validation passed", 
-                                "Service: " + j["serviceName"].get<std::string>() + ", Model: " + model + ", DeviceType: " + deviceType);
+                                "Service: " + j["serviceName"].get<string>() + ", Model: " + model + ", DeviceType: " + deviceType);
                         } else {
-                            std::cout << "[FAIL] " << fail_reason << "\n";
+                            cout << "[FAIL] " << fail_reason << "\n";
                             log_detailed("FAIL", "MDNS", "mDNS validation failed", 
-                                "Service: " + j["serviceName"].get<std::string>() + ", Errors: " + fail_reason);
+                                "Service: " + j["serviceName"].get<string>() + ", Errors: " + fail_reason);
                         }
                     }
                 } catch (...) { 
                     log_detailed("WARN", "MDNS", "Failed to parse mDNS packet", 
-                        "From: " + src_ip + ", Size: " + std::to_string(len) + " bytes\n    Raw data: " + std::string(buffer, len));
+                        "From: " + src_ip + ", Size: " + to_string(len) + " bytes\n    Raw data: " + string(buffer, len));
                     continue; 
                 }
             }
@@ -221,75 +223,118 @@ void scan_mdns(const std::string& expected_ip, DeviceIdentity& identity) {
 }
 
 struct TestResult {
-    std::string name;
+    string name;
     bool passed;
-    std::string details;
+    string details;
 };
 
 class UdpClient {
 public:
-    UdpClient(const std::string& ip, int port) {
-        log_detailed("INFO", "UDP", "Initializing UDP client", "Target: " + ip + ":" + std::to_string(port));
+    UdpClient(const string& ip, int port) {
+        log_detailed("INFO", "UDP", "Initializing UDP client", "Target: " + ip + ":" + to_string(port));
         WSADATA wsaData;
         if (WSAStartup(MAKEWORD(2,2), &wsaData) != 0) {
-            log_detailed("ERROR", "UDP", "WSAStartup failed", "Error code: " + std::to_string(WSAGetLastError()));
-            throw std::runtime_error("WSAStartup failed");
+            log_detailed("ERROR", "UDP", "WSAStartup failed", "Error code: " + to_string(WSAGetLastError()));
+            throw runtime_error("WSAStartup failed");
         }
         sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (sock == INVALID_SOCKET) {
-            log_detailed("ERROR", "UDP", "Socket creation failed", "Error code: " + std::to_string(WSAGetLastError()));
-            throw std::runtime_error("socket() failed");
+            log_detailed("ERROR", "UDP", "Socket creation failed", "Error code: " + to_string(WSAGetLastError()));
+            throw runtime_error("socket() failed");
         }
+
+        // Bind to VIRGIL_PORT (7889) so we receive responses on the correct port
+        sockaddr_in bind_addr{};
+        bind_addr.sin_family = AF_INET;
+        bind_addr.sin_addr.s_addr = INADDR_ANY;
+        bind_addr.sin_port = htons(VIRGIL_PORT);
+        if (::bind(sock, (sockaddr*)&bind_addr, sizeof(bind_addr)) == SOCKET_ERROR) {
+            int error = WSAGetLastError();
+            log_detailed("ERROR", "UDP", "Bind to port 7889 failed", "WSA Error: " + to_string(error));
+            closesocket(sock);
+            WSACleanup();
+            throw runtime_error("Failed to bind UDP socket to port 7889");
+        }
+
         memset(&addr, 0, sizeof(addr));
         addr.sin_family = AF_INET;
         addr.sin_port = htons(port);
         int inet_result = inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
         if (inet_result != 1) {
-            log_detailed("ERROR", "UDP", "Invalid IP address", "IP: " + ip + ", inet_pton result: " + std::to_string(inet_result));
-            throw std::runtime_error("Invalid IP address: " + ip);
+            log_detailed("ERROR", "UDP", "Invalid IP address", "IP: " + ip + ", inet_pton result: " + to_string(inet_result));
+            throw runtime_error("Invalid IP address: " + ip);
         }
-        
+
         DWORD timeout = 2000; // 2s
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
-        
-        // Log the resolved address
+
+        // Log the resolved address and bound port
         char resolved_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &addr.sin_addr, resolved_ip, sizeof(resolved_ip));
-        log_detailed("INFO", "UDP", "UDP client initialized successfully", 
-                    "Socket ready for communication to " + std::string(resolved_ip) + ":" + std::to_string(port));
+        
+        // Get and log the actual bound port
+        sockaddr_in bound_addr;
+        int bound_addr_len = sizeof(bound_addr);
+        if (getsockname(sock, (sockaddr*)&bound_addr, &bound_addr_len) == 0) {
+            int bound_port = ntohs(bound_addr.sin_port);
+            cout << "[UDP] Socket bound to port " << bound_port << " for receiving responses" << endl;
+            log_detailed("INFO", "UDP", "UDP client initialized successfully", 
+                        "Socket bound to port " + to_string(bound_port) + ", target: " + string(resolved_ip) + ":" + to_string(port));
+        } else {
+            log_detailed("INFO", "UDP", "UDP client initialized successfully", 
+                        "Socket ready for communication to " + string(resolved_ip) + ":" + to_string(port));
+        }
     }
     ~UdpClient() { closesocket(sock); WSACleanup(); }
-    void send(const std::string& msg) {
-        std::string formatted_msg = msg;
+    void send(const string& msg) {
+        string formatted_msg = msg;
         // Try to format JSON for logging
         try {
             auto j = json::parse(msg);
             formatted_msg = j.dump(2);
+            // Print the message type for easy identification
+            if (j.contains("messages") && j["messages"].is_array() && !j["messages"].empty()) {
+                if (j["messages"][0].contains("messageType")) {
+                    cout << "[TESTER] Sending " << j["messages"][0]["messageType"] << " message" << endl;
+                }
+            }
         } catch (...) {
             // If parsing fails, use original message
         }
         
-        log_detailed("SEND", "UDP", "Sending message", "Size: " + std::to_string(msg.size()) + " bytes\n    Content:\n" + formatted_msg);
+        cout << "[TESTER] Sending UDP packet to slave..." << endl;
+        log_detailed("SEND", "UDP", "Sending message", "Size: " + to_string(msg.size()) + " bytes\n    Content:\n" + formatted_msg);
         int send_result = sendto(sock, msg.c_str(), (int)msg.size(), 0, (sockaddr*)&addr, sizeof(addr));
         if (send_result == SOCKET_ERROR) {
             int error = WSAGetLastError();
-            log_detailed("ERROR", "UDP", "Send failed", "WSA Error: " + std::to_string(error));
+            cout << "[TESTER] Send failed with error: " << error << endl;
+            log_detailed("ERROR", "UDP", "Send failed", "WSA Error: " + to_string(error));
         } else {
-            log_detailed("DEBUG", "UDP", "Send successful", "Bytes sent: " + std::to_string(send_result));
+            cout << "[TESTER] Successfully sent " << send_result << " bytes" << endl;
+            log_detailed("DEBUG", "UDP", "Send successful", "Bytes sent: " + to_string(send_result));
         }
     }
-    std::string recv() {
+    string recv() {
         char buf[BUF_SIZE] = {0};
         int len = sizeof(addr);
         
-        // Log attempt to receive
-        log_detailed("DEBUG", "UDP", "Attempting to receive data", "Waiting for response...");
+        // Get and print the bound port every time we wait for a packet
+        sockaddr_in bound_addr;
+        int bound_addr_len = sizeof(bound_addr);
+        int listening_port = 0;
+        if (getsockname(sock, (sockaddr*)&bound_addr, &bound_addr_len) == 0) {
+            listening_port = ntohs(bound_addr.sin_port);
+        }
+        
+        // Log attempt to receive with port information
+        cout << "[UDP] Waiting for response on port " << listening_port << "..." << endl;
+        log_detailed("DEBUG", "UDP", "Attempting to receive data", "Listening on port " + to_string(listening_port) + ", waiting for response...");
         
         int ret = recvfrom(sock, buf, BUF_SIZE, 0, (sockaddr*)&addr, &len);
         
         if (ret <= 0) {
             int error = WSAGetLastError();
-            std::string error_desc;
+            string error_desc;
             if (ret == 0) {
                 error_desc = "Connection closed gracefully";
             } else if (error == WSAETIMEDOUT) {
@@ -299,10 +344,10 @@ public:
             } else if (error == WSAEINTR) {
                 error_desc = "Interrupted (WSAEINTR)";
             } else {
-                error_desc = "Error code " + std::to_string(error);
+                error_desc = "Error code " + to_string(error);
             }
             
-            log_detailed("RECV", "UDP", "No data received", "Return code: " + std::to_string(ret) + ", WSA Error: " + error_desc);
+            log_detailed("RECV", "UDP", "No data received", "Return code: " + to_string(ret) + ", WSA Error: " + error_desc);
             return "";
         }
         
@@ -311,13 +356,13 @@ public:
         inet_ntop(AF_INET, &addr.sin_addr, src_ip, sizeof(src_ip));
         int src_port = ntohs(addr.sin_port);
         
-        std::string response(buf, ret);
+        string response(buf, ret);
 
         // Log all raw data received for debugging
-        log_detailed("DEBUG", "UDP", "Raw data received", "From: " + std::string(src_ip) + ":" + std::to_string(src_port) + 
-                    ", Size: " + std::to_string(ret) + " bytes\n    Raw: " + response);
+        log_detailed("DEBUG", "UDP", "Raw data received", "From: " + string(src_ip) + ":" + to_string(src_port) + 
+                    ", Size: " + to_string(ret) + " bytes\n    Raw: " + response);
 
-        std::string formatted_response = response;
+        string formatted_response = response;
         // Try to format JSON for logging
         try {
             auto j = json::parse(response);
@@ -326,8 +371,8 @@ public:
             // If parsing fails, use original response
         }
 
-        log_detailed("RECV", "UDP", "Received message", "From: " + std::string(src_ip) + ":" + std::to_string(src_port) + 
-                    ", Size: " + std::to_string(ret) + " bytes\n    Content:\n" + formatted_response);
+        log_detailed("RECV", "UDP", "Received message", "From: " + string(src_ip) + ":" + to_string(src_port) + 
+                    ", Size: " + to_string(ret) + " bytes\n    Content:\n" + formatted_response);
         return response;
     }
 private:
@@ -336,14 +381,14 @@ private:
 };
 
 struct ExpectedResponse {
-    std::string type;
-    std::function<bool(const json&)> validator;
-    std::string description;
+    string type;
+    function<bool(const json&)> validator;
+    string description;
 };
 
 class VirgilTester {
 public:
-    VirgilTester(const std::string& slave_ip, DeviceIdentity& identity)
+    VirgilTester(const string& slave_ip, DeviceIdentity& identity)
         : client(slave_ip, VIRGIL_PORT), slave_ip(slave_ip), identity(identity) {}
 
     void run_all_tests() {
@@ -365,13 +410,13 @@ public:
     }
 
     UdpClient client;
-    std::string slave_ip;
-    std::vector<TestResult> results;
+    string slave_ip;
+    vector<TestResult> results;
     DeviceIdentity& identity;
 
-    void add_result(const std::string& name, bool passed, const std::string& details = "") {
+    void add_result(const string& name, bool passed, const string& details = "") {
         results.push_back({name, passed, details});
-        std::cout << (passed ? "[PASS] " : "[FAIL] ") << name << (details.empty() ? "" : (": " + details)) << std::endl;
+        cout << (passed ? "[PASS] " : "[FAIL] ") << name << (details.empty() ? "" : (": " + details)) << endl;
         
         // Detailed logging for file
         log_detailed(passed ? "PASS" : "FAIL", "TEST", name, details.empty() ? "No additional details" : details);
@@ -380,19 +425,19 @@ public:
     void print_summary() {
         int pass = 0, fail = 0;
         for (const auto& r : results) (r.passed ? pass : fail)++;
-        std::cout << "\n==== TEST SUMMARY ====" << std::endl;
-        std::cout << "Passed: " << pass << ", Failed: " << fail << ", Total: " << results.size() << std::endl;
+        cout << "\n==== TEST SUMMARY ====" << endl;
+        cout << "Passed: " << pass << ", Failed: " << fail << ", Total: " << results.size() << endl;
     }
 
     // Helper: Wait for a response and validate
-    bool wait_for_response(const ExpectedResponse& expected, std::string& out_details, int tries = 3, int ms_wait = 500) {
-        log_detailed("INFO", "WAIT", "Waiting for response", "Type: " + expected.type + ", Tries: " + std::to_string(tries) + ", Wait: " + std::to_string(ms_wait) + "ms");
+    bool wait_for_response(const ExpectedResponse& expected, string& out_details, int tries = 3, int ms_wait = 500) {
+        log_detailed("INFO", "WAIT", "Waiting for response", "Type: " + expected.type + ", Tries: " + to_string(tries) + ", Wait: " + to_string(ms_wait) + "ms");
         
         for (int i = 0; i < tries; ++i) {
-            std::string resp = client.recv();
+            string resp = client.recv();
             if (resp.empty()) {
-                log_detailed("DEBUG", "WAIT", "Empty response received", "Attempt " + std::to_string(i + 1) + "/" + std::to_string(tries));
-                std::this_thread::sleep_for(std::chrono::milliseconds(ms_wait));
+                log_detailed("DEBUG", "WAIT", "Empty response received", "Attempt " + to_string(i + 1) + "/" + to_string(tries));
+                this_thread::sleep_for(chrono::milliseconds(ms_wait));
                 continue;
             }
             try {
@@ -419,28 +464,28 @@ public:
                     }
                 }
                 log_detailed("DEBUG", "WAIT", "No matching message type found", "Expected: " + expected.type + "\n    Messages:\n" + j["messages"].dump(2));
-            } catch (const std::exception& e) { 
-                log_detailed("ERROR", "WAIT", "JSON parse error", "Error: " + std::string(e.what()) + "\n    Raw data: " + resp);
+            } catch (const exception& e) { 
+                log_detailed("ERROR", "WAIT", "JSON parse error", "Error: " + string(e.what()) + "\n    Raw data: " + resp);
                 continue; 
             }
         }
         out_details = "No valid " + expected.type + " received.";
-        log_detailed("FAIL", "WAIT", "No valid response received", out_details + " after " + std::to_string(tries) + " tries");
+        log_detailed("FAIL", "WAIT", "No valid response received", out_details + " after " + to_string(tries) + " tries");
         return false;
     }
 
     // --- Test Functions ---
     void test_parameter_request() {
         // Edge cases
-        std::vector<int> indices = {0, 1, -1, -2, 999, -999};
+        vector<int> indices = {0, 1, -1, -2, 999, -999};
         // Add all channel indices if available
         for (int idx : identity.channelIndices) {
-            if (std::find(indices.begin(), indices.end(), idx) == indices.end()) {
+            if (find(indices.begin(), indices.end(), idx) == indices.end()) {
                 indices.push_back(idx);
             }
         }
-        std::sort(indices.begin(), indices.end());
-        indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+        sort(indices.begin(), indices.end());
+        indices.erase(unique(indices.begin(), indices.end()), indices.end());
         for (int idx : indices) {
             json req = {
                 {"transmittingDevice", "TestMaster"},
@@ -484,9 +529,9 @@ public:
             } else {
                 expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue"); }, "Error for invalid channelIndex"};
             }
-            std::string details;
+            string details;
             bool ok = wait_for_response(expected, details);
-            add_result("ParameterRequest channelIndex=" + std::to_string(idx), ok, details);
+            add_result("ParameterRequest channelIndex=" + to_string(idx), ok, details);
         }
     }
 
@@ -503,7 +548,7 @@ public:
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {valid_cmd}}};
         client.send(req.dump());
         ExpectedResponse expected = {"StatusUpdate", [](const json& m){ return m.contains("channelIndex") && m.contains("gain"); }, "StatusUpdate after valid command"};
-        std::string details;
+        string details;
         bool ok = wait_for_response(expected, details);
         add_result("ParameterCommand valid", ok, details);
 
@@ -554,11 +599,11 @@ public:
     }
 
     void test_status_request() {
-        std::vector<int> indices = {-1, 999};
+        vector<int> indices = {-1, 999};
         
         // Add valid channel indices
         for (int idx : identity.channelIndices) {
-            if (std::find(indices.begin(), indices.end(), idx) == indices.end()) {
+            if (find(indices.begin(), indices.end(), idx) == indices.end()) {
                 indices.push_back(idx);
             }
         }
@@ -570,7 +615,7 @@ public:
             };
             client.send(req.dump());
             ExpectedResponse expected;
-            if (std::find(identity.channelIndices.begin(), identity.channelIndices.end(), idx) != identity.channelIndices.end()) {
+            if (find(identity.channelIndices.begin(), identity.channelIndices.end(), idx) != identity.channelIndices.end()) {
                 expected = {"StatusUpdate", [idx](const json& m){ 
                     return m.contains("channelIndex") && m["channelIndex"] == idx; 
                 }, "StatusUpdate for valid channel"};
@@ -583,9 +628,9 @@ public:
                     return m["errorValue"] == "ChannelIndexInvalid"; 
                 }, "Error for invalid channelIndex"};
             }
-            std::string details;
+            string details;
             bool ok = wait_for_response(expected, details);
-            add_result("StatusRequest channelIndex=" + std::to_string(idx), ok, details);
+            add_result("StatusRequest channelIndex=" + to_string(idx), ok, details);
         }
 
         // Test that StatusUpdate contains all current values for the channel
@@ -597,7 +642,7 @@ public:
             };
             client.send(req.dump());
             
-            std::string resp = client.recv();
+            string resp = client.recv();
             if (!resp.empty()) {
                 try {
                     auto j = json::parse(resp);
@@ -620,7 +665,7 @@ public:
 
     void test_error_cases() {
         // Test all specific error types
-        std::vector<std::pair<std::string, std::string>> error_tests = {
+        vector<pair<string, string>> error_tests = {
             {"UnrecognizedCommand", "NotAType"},
             {"ChannelIndexInvalid", "999"},
             {"MalformedMessage", ""},
@@ -634,7 +679,7 @@ public:
         ExpectedResponse expected = {"ErrorResponse", [](const json& m){ 
             return m.contains("errorValue") && m.contains("errorString") && m["errorString"].is_string(); 
         }, "Error for malformed message"};
-        std::string details;
+        string details;
         bool ok = wait_for_response(expected, details);
         add_result("Malformed message (missing transmittingDevice)", ok, details);
 
@@ -669,7 +714,7 @@ public:
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", -1}}}}};
         client.send(req.dump());
         ExpectedResponse expected = {"ParameterResponse", [](const json& m){ return m.contains("model") && m.contains("deviceType") && m.contains("channelIndices"); }, "Device-level ParameterResponse"};
-        std::string details;
+        string details;
         bool ok = wait_for_response(expected, details);
         add_result("Device-level ParameterResponse", ok, details);
     }
@@ -680,14 +725,14 @@ public:
         client.send(req.dump());
         
         int count = 0;
-        std::vector<std::chrono::steady_clock::time_point> timestamps;
-        auto start_time = std::chrono::steady_clock::now();
+        vector<chrono::steady_clock::time_point> timestamps;
+        auto start_time = chrono::steady_clock::now();
         
         // Look for continuous parameters specifically
         bool found_audio_level = false, found_rf_level = false, found_battery_level = false;
         
         for (int i = 0; i < 6; ++i) {  // Check for 3 seconds
-            std::string resp = client.recv();
+            string resp = client.recv();
             if (!resp.empty()) {
                 try {
                     auto j = json::parse(resp);
@@ -695,7 +740,7 @@ public:
                         for (const auto& msg : j["messages"]) {
                             if (msg.contains("messageType") && msg["messageType"] == "StatusUpdate") {
                                 count++;
-                                timestamps.push_back(std::chrono::steady_clock::now());
+                                timestamps.push_back(chrono::steady_clock::now());
                                 
                                 // Check for continuous parameters
                                 if (msg.contains("audioLevel")) found_audio_level = true;
@@ -706,16 +751,16 @@ public:
                     }
                 } catch (...) {}
             }
-            std::this_thread::sleep_for(500ms);
+            this_thread::sleep_for(500ms);
         }
         
-        add_result("Continuous StatusUpdate count", count >= 2, "Received " + std::to_string(count) + " updates");
+        add_result("Continuous StatusUpdate count", count >= 2, "Received " + to_string(count) + " updates");
         
         // Check timing intervals (should be around 500ms)
         bool timing_ok = true;
         if (timestamps.size() >= 2) {
             for (size_t i = 1; i < timestamps.size(); ++i) {
-                auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(timestamps[i] - timestamps[i-1]).count();
+                auto interval = chrono::duration_cast<chrono::milliseconds>(timestamps[i] - timestamps[i-1]).count();
                 if (interval < 400 || interval > 600) {  // 500ms ± 100ms tolerance
                     timing_ok = false;
                     break;
@@ -723,7 +768,7 @@ public:
             }
         }
         add_result("Continuous update timing", timing_ok && timestamps.size() >= 2, 
-                  "Timing validation with " + std::to_string(timestamps.size()) + " samples");
+                  "Timing validation with " + to_string(timestamps.size()) + " samples");
         
         // Report which continuous parameters were found
         if (found_audio_level) add_result("audioLevel continuous updates", true, "Found audioLevel in updates");
@@ -735,7 +780,7 @@ public:
         // Get device parameters first
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", -1}}}}};
         client.send(req.dump());
-        std::string resp = client.recv();
+        string resp = client.recv();
         if (resp.empty()) {
             add_result("Parameter validation setup", false, "No device response");
             return;
@@ -753,7 +798,7 @@ public:
                         json channel_req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", test_channel}}}}};
                         client.send(channel_req.dump());
                         
-                        std::string channel_resp = client.recv();
+                        string channel_resp = client.recv();
                         if (!channel_resp.empty()) {
                             auto channel_j = json::parse(channel_resp);
                             if (channel_j.contains("messages")) {
@@ -778,7 +823,7 @@ public:
         if (msg.contains("gain")) {
             const auto& gain = msg["gain"];
             bool valid = true;
-            std::string issues;
+            string issues;
             
             // Required fields
             if (!gain.contains("value")) { valid = false; issues += "Missing value. "; }
@@ -801,11 +846,11 @@ public:
                 valid = false; issues += "precision not numeric. ";
             }
             
-            add_result("Gain parameter completeness ch" + std::to_string(channel_idx), valid, issues);
+            add_result("Gain parameter completeness ch" + to_string(channel_idx), valid, issues);
         }
 
         // Test other parameters if present
-        std::vector<std::string> param_names = {"pad", "lowcut", "lowcutEnable", "polarity", "phantomPower", 
+        vector<string> param_names = {"pad", "lowcut", "lowcutEnable", "polarity", "phantomPower", 
                                                "rfEnable", "transmitPower", "transmitterConnected", "squelch", 
                                                "subDevice", "audioLevel", "rfLevel", "batteryLevel"};
         
@@ -816,9 +861,9 @@ public:
         }
     }
 
-    void validate_parameter_structure(const json& param, const std::string& name, int channel_idx) {
+    void validate_parameter_structure(const json& param, const string& name, int channel_idx) {
         bool valid = true;
-        std::string issues;
+        string issues;
         
         // All parameters must have these fields
         if (!param.contains("locked")) { valid = false; issues += "Missing locked. "; }
@@ -832,7 +877,7 @@ public:
         
         // Validate dataType values
         if (param.contains("dataType")) {
-            std::string dataType = param["dataType"];
+            string dataType = param["dataType"];
             if (dataType != "int" && dataType != "float" && dataType != "bool" && 
                 dataType != "string" && dataType != "enum" && dataType != "percent") {
                 valid = false; issues += "Invalid dataType. ";
@@ -850,7 +895,7 @@ public:
         
         // Special validations for specific parameters
         if (name == "subDevice" && param.contains("value")) {
-            std::string value = param["value"];
+            string value = param["value"];
             if (value != "handheld" && value != "beltpack" && value != "gooseneck" && 
                 value != "iem" && value != "other") {
                 valid = false; issues += "Invalid subDevice value. ";
@@ -869,7 +914,7 @@ public:
             valid = false; issues += "Continuous parameter should be locked. ";
         }
         
-        add_result(name + " parameter structure ch" + std::to_string(channel_idx), valid, issues);
+        add_result(name + " parameter structure ch" + to_string(channel_idx), valid, issues);
     }
 
     void test_locked_parameters() {
@@ -883,7 +928,7 @@ public:
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", test_channel}}}}};
         client.send(req.dump());
         
-        std::string resp = client.recv();
+        string resp = client.recv();
         if (resp.empty()) {
             add_result("Locked parameter test setup", false, "No response");
             return;
@@ -922,7 +967,7 @@ public:
                                 ExpectedResponse expected = {"ErrorResponse", [](const json& m){ 
                                     return m["errorValue"] == "Parameterlocked" || m["errorValue"] == "UnableToChangeValue"; 
                                 }, "Error for locked parameter change"};
-                                std::string details;
+                                string details;
                                 bool ok = wait_for_response(expected, details);
                                 add_result("Locked parameter " + key + " rejection", ok, details);
                             }
@@ -944,7 +989,7 @@ public:
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", test_channel}}}}};
         client.send(req.dump());
         
-        std::string resp = client.recv();
+        string resp = client.recv();
         if (resp.empty()) return;
         
         try {
@@ -976,7 +1021,7 @@ public:
                             ExpectedResponse expected = {"ErrorResponse", [](const json& m){ 
                                 return m["errorValue"] == "ValueOutOfRange" || m["errorValue"] == "InvalidValueType"; 
                             }, "Error for precision violation"};
-                            std::string details;
+                            string details;
                             bool ok = wait_for_response(expected, details);
                             add_result("Precision validation", ok, details);
                         }
@@ -995,7 +1040,7 @@ public:
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", test_channel}}}}};
         client.send(req.dump());
         
-        std::string resp = client.recv();
+        string resp = client.recv();
         if (resp.empty()) return;
         
         try {
@@ -1020,7 +1065,7 @@ public:
                             ExpectedResponse expected = {"ErrorResponse", [](const json& m){ 
                                 return m["errorValue"] == "InvalidValueType" || m["errorValue"] == "ValueOutOfRange"; 
                             }, "Error for invalid enum value"};
-                            std::string details;
+                            string details;
                             bool ok = wait_for_response(expected, details);
                             add_result("Enum parameter " + key + " validation", ok, details);
                         }
@@ -1045,21 +1090,21 @@ public:
         // Should get multiple responses or combined response
         int response_count = 0;
         for (int i = 0; i < 3; ++i) {
-            std::string resp = client.recv();
+            string resp = client.recv();
             if (!resp.empty()) response_count++;
-            std::this_thread::sleep_for(200ms);
+            this_thread::sleep_for(200ms);
         }
-        add_result("Multiple messages handling", response_count > 0, "Received " + std::to_string(response_count) + " responses");
+        add_result("Multiple messages handling", response_count > 0, "Received " + to_string(response_count) + " responses");
 
         // Test very large message (near size limits)
-        std::string large_device_name(1000, 'X');
+        string large_device_name(1000, 'X');
         json large_msg = {
             {"transmittingDevice", large_device_name},
             {"messages", {{{"messageType", "StatusRequest"}, {"channelIndex", 0}}}}
         };
         client.send(large_msg.dump());
         
-        std::string resp = client.recv();
+        string resp = client.recv();
         bool handled = !resp.empty();
         add_result("Large message handling", handled, handled ? "Handled large message" : "No response to large message");
 
@@ -1068,7 +1113,7 @@ public:
         client.send(no_device.dump());
         
         ExpectedResponse expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue"); }, "Error for missing transmittingDevice"};
-        std::string details;
+        string details;
         bool ok = wait_for_response(expected, details);
         add_result("Missing transmittingDevice", ok, details);
     }
@@ -1089,36 +1134,36 @@ public:
             
             // Should receive StatusUpdate (even though we're not listening on multicast)
             ExpectedResponse expected = {"StatusUpdate", [](const json& m){ return m.contains("channelIndex"); }, "StatusUpdate after command"};
-            std::string details;
+            string details;
             bool ok = wait_for_response(expected, details);
             add_result("StatusUpdate multicast trigger", ok, details);
         }
 
         // Test continuous status updates timing
-        auto start_time = std::chrono::steady_clock::now();
-        std::vector<std::chrono::steady_clock::time_point> update_times;
+        auto start_time = chrono::steady_clock::now();
+        vector<chrono::steady_clock::time_point> update_times;
         
         for (int i = 0; i < 10; ++i) {
-            std::string resp = client.recv();
+            string resp = client.recv();
             if (!resp.empty()) {
                 try {
                     auto j = json::parse(resp);
                     if (j.contains("messages")) {
                         for (const auto& msg : j["messages"]) {
                             if (msg.contains("messageType") && msg["messageType"] == "StatusUpdate") {
-                                update_times.push_back(std::chrono::steady_clock::now());
+                                update_times.push_back(chrono::steady_clock::now());
                             }
                         }
                     }
                 } catch (...) {}
             }
-            std::this_thread::sleep_for(100ms);
+            this_thread::sleep_for(100ms);
         }
         
         // Check if updates come roughly every 500ms
         bool timing_ok = true;
         for (size_t i = 1; i < update_times.size(); ++i) {
-            auto interval = std::chrono::duration_cast<std::chrono::milliseconds>(update_times[i] - update_times[i-1]).count();
+            auto interval = chrono::duration_cast<chrono::milliseconds>(update_times[i] - update_times[i-1]).count();
             if (interval < 400 || interval > 600) {  // Allow 100ms tolerance
                 timing_ok = false;
                 break;
@@ -1126,7 +1171,7 @@ public:
         }
         
         add_result("Continuous update timing", timing_ok && update_times.size() >= 2, 
-                  "Updates: " + std::to_string(update_times.size()) + ", timing " + (timing_ok ? "OK" : "incorrect"));
+                  "Updates: " + to_string(update_times.size()) + ", timing " + (timing_ok ? "OK" : "incorrect"));
     }
 
     void test_gain_pad_independence() {
@@ -1142,7 +1187,7 @@ public:
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", test_channel}}}}};
         client.send(req.dump());
         
-        std::string resp = client.recv();
+        string resp = client.recv();
         if (resp.empty()) {
             add_result("Gain/Pad independence setup", false, "No response to parameter request");
             return;
@@ -1216,7 +1261,7 @@ public:
         ExpectedResponse expected = {"StatusUpdate", [](const json& m){ 
             return m.contains("channelIndex"); 
         }, "StatusUpdate after pad toggle"};
-        std::string details;
+        string details;
         bool pad_toggle_ok = wait_for_response(expected, details);
         
         if (!pad_toggle_ok) {
@@ -1271,14 +1316,14 @@ public:
         bool gain_unchanged = (abs(original_gain - final_gain) < 0.001);  // Allow for floating point precision
         bool pad_changed = (final_pad_state == new_pad_state);
         
-        std::string result_details = "Original gain: " + std::to_string(original_gain) + 
-                                   ", Final gain: " + std::to_string(final_gain) + 
+        string result_details = "Original gain: " + to_string(original_gain) + 
+                                   ", Final gain: " + to_string(final_gain) + 
                                    ", Pad: " + (original_pad_state ? "on" : "off") + 
                                    " -> " + (final_pad_state ? "on" : "off");
         
         add_result("Gain value independence", gain_unchanged, 
                   gain_unchanged ? "Gain remained constant during pad toggle" : 
-                  "FAIL: Gain changed from " + std::to_string(original_gain) + " to " + std::to_string(final_gain));
+                  "FAIL: Gain changed from " + to_string(original_gain) + " to " + to_string(final_gain));
         
         add_result("Pad toggle verification", pad_changed,
                   pad_changed ? "Pad successfully toggled" : 
@@ -1301,25 +1346,25 @@ public:
 
 int main(int argc, char* argv[]) {
     // Initialize log file with timestamp
-    std::string timestamp = get_timestamp();
-    std::replace(timestamp.begin(), timestamp.end(), ':', '-');  // Windows filename compatibility
-    std::replace(timestamp.begin(), timestamp.end(), ' ', '_');
-    std::string log_filename = "virgil_test_" + timestamp + ".log";
+    string timestamp = get_timestamp();
+    replace(timestamp.begin(), timestamp.end(), ':', '-');  // Windows filename compatibility
+    replace(timestamp.begin(), timestamp.end(), ' ', '_');
+    string log_filename = "virgil_test_" + timestamp + ".log";
     
-    log_file.open(log_filename, std::ios::out | std::ios::app);
+    log_file.open(log_filename, ios::out | ios::app);
     if (!log_file.is_open()) {
-        std::cerr << "Warning: Could not open log file " << log_filename << std::endl;
+        cerr << "Warning: Could not open log file " << log_filename << endl;
     } else {
-        std::cout << "Logging detailed output to: " << log_filename << std::endl;
+        cout << "Logging detailed output to: " << log_filename << endl;
         log_detailed("INFO", "STARTUP", "Virgil Slave Tester started", "Log file: " + log_filename);
     }
     
-    std::string ip;
+    string ip;
     if (argc < 2) {
-        std::cout << "Enter the slave's IP address: ";
-        std::getline(std::cin, ip);
+        cout << "Enter the slave's IP address: ";
+        getline(cin, ip);
         if (ip.empty()) {
-            std::cout << "No IP provided. Exiting." << std::endl;
+            cout << "No IP provided. Exiting." << endl;
             log_detailed("ERROR", "STARTUP", "No IP address provided", "Exiting application");
             return 1;
         }
@@ -1336,9 +1381,9 @@ int main(int argc, char* argv[]) {
         VirgilTester tester(ip, identity);
         tester.run_all_tests();
         log_detailed("INFO", "SHUTDOWN", "All tests completed successfully", "Test run finished");
-    } catch (const std::exception& ex) {
-        std::cerr << "Fatal error: " << ex.what() << std::endl;
-        log_detailed("FATAL", "SHUTDOWN", "Fatal error occurred", "Error: " + std::string(ex.what()));
+    } catch (const exception& ex) {
+        cerr << "Fatal error: " << ex.what() << endl;
+        log_detailed("FATAL", "SHUTDOWN", "Fatal error occurred", "Error: " + string(ex.what()));
         return 2;
     }
     
