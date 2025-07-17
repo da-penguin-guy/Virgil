@@ -8,12 +8,11 @@ Each message in the array requests the status for a specific preamp index. Use -
 */
 {
     "transmittingDevice": "MasterDanteDeviceName", // The device sending the request
-    "receivingDevice": "SlaveDanteDeviceName",     // The device to receive the request
     "messages" :
     [
-        { "messageType" : "StatusRequest", "preampIndex" : 0 },   // Request status for preamp 0
-        { "messageType" : "StatusRequest", "preampIndex" : 1 },   // Request status for preamp 1
-        { "messageType" : "StatusRequest", "preampIndex" : 2 },   // Request status for preamp 2
-        { "messageType" : "StatusRequest", "preampIndex" : -1 }   // Request status for all preamps
+        { "messageType" : "StatusRequest", "channelIndex" : 0 },   // Request status for channel 0
+        { "messageType" : "StatusRequest", "channelIndex" : 1 },   // Request status for channel 1
+        { "messageType" : "StatusRequest", "channelIndex" : 2 },   // Request status for channel 2
+        { "messageType" : "StatusRequest", "channelIndex" : -1 }   // Request status for all channels
     ]
 }

@@ -12,11 +12,11 @@ It contains the current state of the preamp (or device) after a change. Status u
     [
         {
             "messageType" : "StatusUpdate", // Indicates this is a status update
-            "preampIndex" : 0,              // The preamp index being updated
+            "channelIndex" : 0,              // The channel index being updated
             "gain" : 
             {
                 "value" : 0,                // Current gain value in dB
-                "minValue" : -20            // Minimum gain value
+                "minValue" : -20            // This indicates the minimum value for gain has changed (For whatever reason)
             },
             "lowcut" : 
             {
@@ -26,12 +26,6 @@ It contains the current state of the preamp (or device) after a change. Status u
             {
                 "value" : false             // Current polarity (false = normal, true = inverted)
             }
-        },
-        {
-            "messageType" : "StatusUpdate", // Device-level info (preampIndex -1)
-            "preampIndex" : -1,
-            "model" : "PreampModelName",      // Model name of the device
-            "deviceType" : "digitalStageBox"  // Device type
         }
     ]
 }

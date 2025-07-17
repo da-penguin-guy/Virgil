@@ -1,0 +1,3 @@
+C:/Users/robot/OneDrive/Desktop/Virgil/Slave_Tester/build/CMakeFiles/Slave.dir
+C:/Users/robot/OneDrive/Desktop/Virgil/Slave_Tester/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/robot/OneDrive/Desktop/Virgil/Slave_Tester/build/CMakeFiles/ZERO_CHECK.dir

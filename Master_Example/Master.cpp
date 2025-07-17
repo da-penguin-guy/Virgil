@@ -8,9 +8,6 @@
 #include <mutex>
 #include "nlohmann/json.hpp"
 
-
-
-
 #define NK_INCLUDE_FONT_BAKING
 #define NK_INCLUDE_DEFAULT_FONT
 #define NK_INCLUDE_DEFAULT_ALLOCATOR
@@ -18,9 +15,6 @@
 #define NK_INCLUDE_STANDARD_IO
 #define NK_INCLUDE_STANDARD_VARARGS
 #define NK_IMPLEMENTATION
-
-
-
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -466,7 +460,6 @@ void SendParameterRequest(json& device){
     request["messages"] = json::array();
     // Device-level info
     request["messages"].push_back({{"messageType", "ParameterRequest"}, {"preampIndex", -2}});
-    cout << "[SendParameterRequest] Sending to IP: " << device["ip"] << ", name: " << device["name"] << ", payload: " << request.dump() << endl;
     if (!SendUDP(device["ip"], virgilPort, request)) {
         cerr << "[SendParameterRequest] Failed to send ParameterRequest to device: " << device["name"] << endl;
     }
@@ -495,7 +488,6 @@ void ProcessPacket(const string& data, const sockaddr_in& src){
         cerr << "Ignoring packet from unknown device: " << txDevice << endl;
         return;
     }
-    cout << "Data: " << j.dump(2) << endl;
     json& device = it->second;
     for (const json& message : j["messages"]) {
         if (!message.contains("messageType")) continue;
@@ -516,9 +508,7 @@ void ProcessPacket(const string& data, const sockaddr_in& src){
             // Handle preamp-level responses (preampIndex >= 0)
             else if (message.contains("preampIndex")) {
                 int idx = message["preampIndex"];
-                cout << "[DEBUG] Received preamp message: idx=" << idx << ", messageType=" << messageType << endl;
                 if (idx >= 0) {
-                    cout << "[DEBUG] Processing preamp update: idx=" << idx << ", message=" << message.dump() << endl;
                     // Ensure 'preamps' array exists
                     if (!device.contains("preamps") || !device["preamps"].is_array()) {
                         device["preamps"] = json::array();
@@ -528,7 +518,6 @@ void ProcessPacket(const string& data, const sockaddr_in& src){
                         device["preamps"].push_back(json::object());
                     }
                     json msgCopy = message;
-                    msgCopy.erase("preampIndex");
                     msgCopy.erase("messageType");
                     device["preamps"][idx].update(msgCopy);
                 }
@@ -615,6 +604,7 @@ void SetupWindow() {
     cout.rdbuf(&logbuf);
 
     static int selected_device = 0;
+    static int selected_preamp = 0;
     vector<string> device_names;
     while (!glfwWindowShouldClose(win)) {
         // Update device_names every frame, only include devices where isFound is true
@@ -651,6 +641,30 @@ void SetupWindow() {
                     vector<const char*> device_cstrs;
                     for (const auto& name : device_names) device_cstrs.push_back(name.c_str());
                     selected_device = nk_combo(ctx, device_cstrs.data(), (int)device_cstrs.size(), selected_device, 20, nk_vec2(left_width - 20, 100));
+
+                    // --- Preamp dropdown ---
+                    // Find selected device's preamps
+                    lock_guard<mutex> lock(danteLookup_mutex);
+                    const string& dev_name = device_names[selected_device];
+                    auto it = danteLookup.find(dev_name);
+                    if (it != danteLookup.end() && it->second.contains("preamps") && it->second["preamps"].is_array()) {
+                        const auto& preamps = it->second["preamps"];
+                        int preamp_count = (int)preamps.size();
+                        if (preamp_count > 0) {
+                            if (selected_preamp >= preamp_count) selected_preamp = 0;
+                            vector<string> preamp_labels;
+                            for (int i = 0; i < preamp_count; ++i) {
+                                // Use preampIndex if available, else just index
+                                int idx = i;
+                                if (preamps[i].contains("preampIndex")) idx = preamps[i]["preampIndex"];
+                                preamp_labels.push_back("Preamp " + to_string(idx));
+                            }
+                            vector<const char*> preamp_cstrs;
+                            for (const auto& s : preamp_labels) preamp_cstrs.push_back(s.c_str());
+                            nk_layout_row_static(ctx, combo_height, left_width - 20, 1);
+                            selected_preamp = nk_combo(ctx, preamp_cstrs.data(), preamp_count, selected_preamp, 20, nk_vec2(left_width - 20, 100));
+                        }
+                    }
                 } else {
                     nk_label(ctx, "No devices", NK_TEXT_LEFT);
                 }

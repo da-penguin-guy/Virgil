@@ -5,15 +5,15 @@ This message is sent from a slave device to a master device in response to a Par
 It describes the capabilities and current state of a preamp, including supported parameters, ranges, and lock status.
 - Use when: A master requests detailed information about a preamp's capabilities and current settings.
 - Protocol: udp
+This has every parameter. I can't think of a single reason one device would have all of these, but who cares. 
 */
 {
     "transmittingDevice": "SlaveDanteDeviceName", // The device sending the info
-    "receivingDevice": "MasterDanteDeviceName",   // The device that requested the info
     "messages" :
     [
         {
             "messageType": "ParameterResponse",
-            "preampIndex" : 0,                    // The preamp being described
+            "channelIndex" : 0,                    // The channel being described
             "gain" :
             {
                 "dataType" : "int",              // Data type (int/float)
@@ -41,6 +41,12 @@ It describes the capabilities and current state of a preamp, including supported
                 "maxValue" : 100,                  // Maximum value
                 "locked" : false                   // If true, cannot be changed
             },
+            "lowcutEnable":
+            {
+                "dataType" : "bool",              // Data type
+                "value" : false,                   // Current value
+                "locked" : false                   // If true, cannot be changed
+            },
             "polarity":
             {
                 "dataType" : "bool",              // Data type
@@ -53,17 +59,53 @@ It describes the capabilities and current state of a preamp, including supported
                 "value" : false,
                 "locked" : false
             },
-            "rfPower":
-            {
-                "dataType" : "int",
-                "unit" : "dB",
-                "value" : -60,
-                "locked" : true
-            },
             "rfEnable":
             {
                 "dataType" : "bool",
-                "value" : false,
+                "value" : true,
+                "locked" : false
+            },
+            "transmitPower":
+            {
+                "dataType" : "enum",
+                "enumValues" : ["low", "medium", "high"],
+                "value" : "medium",
+                "locked" : true
+            },
+            "transmitterConnected":
+            {
+                "dataType" : "bool",
+                "value" : true,
+                "locked" : true
+            },
+            "squelch":
+            {
+                "dataType" : "int",
+                "unit" : "%",
+                "value" : 60,
+                "minValue" : 0,
+                "maxValue" : 100,
+                "precision" : 1,
+                "locked" : false
+            },
+            "subDevice":
+            {
+                "dataType" : "string",
+                "value" : "handheld",   
+                "locked" : true           
+            },
+            "audioLevel":
+            {
+                "dataType" : "int",
+                "unit" : "dBFS",
+                "value" : -30,
+                "locked" : true
+            },
+            "rfLevel":
+            {
+                "dataType" : "int",
+                "unit" : "dB",
+                "value" : -20,
                 "locked" : true
             },
             "batteryLevel":
@@ -71,6 +113,9 @@ It describes the capabilities and current state of a preamp, including supported
                 "dataType" : "int",
                 "unit" : "%",
                 "value" : 100,
+                "minValue" : 0,
+                "maxValue" : 100,
+                "precision" : 1,
                 "locked" : true
             }
         }

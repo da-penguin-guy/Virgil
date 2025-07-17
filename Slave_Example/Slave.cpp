@@ -147,69 +147,6 @@ void AdvertiseMDNS() {
     CloseSocket(sock);
 }
 
-json MakeStatusUpdate(int preampIndex) {
-    lock_guard<mutex> lock(state_mutex);
-    json msg;
-    msg["transmittingDevice"] = SLAVE_DANTE_NAME;
-    msg["messages"] = json::array();
-    if (preampIndex >= 0 && preampIndex < (int)preamps.size()) {
-        json m;
-        m["messageType"] = "StatusUpdate";
-        m.update(preamps[preampIndex]);
-        msg["messages"].push_back(m);
-    } else if (preampIndex == -1) {
-        json m;
-        m["messageType"] = "StatusUpdate";
-        m["preampIndex"] = -1;
-        m["model"] = deviceInfo.model;
-        m["deviceType"] = deviceInfo.deviceType;
-        msg["messages"].push_back(m);
-    }
-    return msg;
-}
-
-json MakeParameterResponse(int preampIndex) {
-    lock_guard<mutex> lock(state_mutex);
-    json msg;
-    msg["transmittingDevice"] = SLAVE_DANTE_NAME;
-    msg["receivingDevice"] = "MasterDanteDeviceName";
-    msg["messages"] = json::array();
-    if (preampIndex == -1) {
-        json dev;
-        dev["messageType"] = "ParameterResponse";
-        dev["preampIndex"] = -1;
-        dev["model"]["value"] = deviceInfo.model;
-        dev["model"]["locked"] = true;
-        dev["deviceType"]["value"] = deviceInfo.deviceType;
-        dev["deviceType"]["locked"] = true;
-        dev["preampCount"] = deviceInfo.preampCount;
-        msg["messages"].push_back(dev);
-    } else if (preampIndex == -2) {
-        // -2: include device-level info and all preamps
-        json dev;
-        dev["messageType"] = "ParameterResponse";
-        dev["preampIndex"] = -1;
-        dev["model"]["value"] = deviceInfo.model;
-        dev["model"]["locked"] = true;
-        dev["deviceType"]["value"] = deviceInfo.deviceType;
-        dev["deviceType"]["locked"] = true;
-        dev["preampCount"] = deviceInfo.preampCount;
-        msg["messages"].push_back(dev);
-        for (const Preamp& p : preamps) {
-            dev.clear();
-            dev["messageType"] = "ParameterResponse";
-            dev.update(p);
-            msg["messages"].push_back(dev);
-        }
-    } else if (preampIndex >= 0 && preampIndex < (int)preamps.size()) {
-        json p_msg;
-        p_msg["messageType"] = "ParameterResponse";
-        p_msg.update(preamps[preampIndex]);
-        msg["messages"].push_back(p_msg);
-    }
-    return msg;
-}
-
 json MakeErrorResponse(const string& errorValue, const string& errorString) {
     json msg;
     msg["transmittingDevice"] = SLAVE_DANTE_NAME;
@@ -220,6 +157,85 @@ json MakeErrorResponse(const string& errorValue, const string& errorString) {
     m["errorValue"] = errorValue;
     m["errorString"] = errorString;
     msg["messages"].push_back(m);
+    return msg;
+}
+
+json MakeStatusUpdate(int channelIndex) {
+    lock_guard<mutex> lock(state_mutex);
+    json msg;
+    msg["transmittingDevice"] = SLAVE_DANTE_NAME;
+    msg["messages"] = json::array();
+    if (channelIndex >= 0 && channelIndex < (int)preamps.size()) {
+        json m;
+        m["messageType"] = "StatusUpdate";
+        m["channelIndex"] = channelIndex;
+        m.update(preamps[channelIndex]);
+        msg["messages"].push_back(m);
+    } else if (channelIndex == -1) {
+        json m;
+        m["messageType"] = "StatusUpdate";
+        m["channelIndex"] = -1;
+        m["model"] = deviceInfo.model;
+        m["deviceType"] = deviceInfo.deviceType;
+        msg["messages"].push_back(m);
+    }
+    return msg;
+}
+
+json MakeParameterResponse(int channelIndex) {
+    lock_guard<mutex> lock(state_mutex);
+    json msg;
+    msg["transmittingDevice"] = SLAVE_DANTE_NAME;
+    msg["receivingDevice"] = "MasterDanteDeviceName";
+    msg["messages"] = json::array();
+    
+    if (channelIndex == -1) {
+        // Device-level response
+        json dev;
+        dev["messageType"] = "ParameterResponse";
+        dev["channelIndex"] = -1;
+        dev["model"] = deviceInfo.model;
+        dev["deviceType"] = deviceInfo.deviceType;
+        dev["virgilVersion"] = "1.0";
+        json channelIndices = json::array();
+        for (int i = 0; i < deviceInfo.preampCount; ++i) {
+            channelIndices.push_back(i);
+        }
+        dev["channelIndices"] = channelIndices;
+        msg["messages"].push_back(dev);
+    } else if (channelIndex == -2) {
+        // All: include device-level info and all channels
+        json dev;
+        dev["messageType"] = "ParameterResponse";
+        dev["channelIndex"] = -1;
+        dev["model"] = deviceInfo.model;
+        dev["deviceType"] = deviceInfo.deviceType;
+        dev["virgilVersion"] = "1.0";
+        json channelIndices = json::array();
+        for (int i = 0; i < deviceInfo.preampCount; ++i) {
+            channelIndices.push_back(i);
+        }
+        dev["channelIndices"] = channelIndices;
+        msg["messages"].push_back(dev);
+        
+        for (const Preamp& p : preamps) {
+            json channel_msg;
+            channel_msg["messageType"] = "ParameterResponse";
+            channel_msg["channelIndex"] = p.index();
+            channel_msg.update(p);
+            msg["messages"].push_back(channel_msg);
+        }
+    } else if (channelIndex >= 0 && channelIndex < (int)preamps.size()) {
+        // Single channel response
+        json p_msg;
+        p_msg["messageType"] = "ParameterResponse";
+        p_msg["channelIndex"] = channelIndex;
+        p_msg.update(preamps[channelIndex]);
+        msg["messages"].push_back(p_msg);
+    } else {
+        // Invalid channel index - should send error
+        return MakeErrorResponse("ChannelIndexInvalid", "Invalid channel index: " + to_string(channelIndex));
+    }
     return msg;
 }
 
@@ -247,6 +263,15 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
         cout << "[EVENT] Sent ErrorResponse (malformed packet)" << endl;
         return;
     }
+    if (!j.contains("transmittingDevice")) {
+        cout << "[EVENT] Malformed packet (no transmittingDevice)" << endl;
+        json err = MakeErrorResponse("MalformedMessage", "Missing 'transmittingDevice' field");
+        sockaddr_in fixed_src = src;
+        fixed_src.sin_port = htons(VIRGIL_PORT);
+        SendUdp(err, fixed_src);
+        cout << "[EVENT] Sent ErrorResponse (missing transmittingDevice)" << endl;
+        return;
+    }
     for (const auto& msg : j["messages"]) {
         cout << "Processing message: " << msg.dump(2) << endl;
         if (!msg.contains("messageType")) {
@@ -255,30 +280,46 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
         }
         string type = msg["messageType"];
         if (type == "ParameterRequest") {
-            int idx = msg.value("preampIndex", -1);
-            cout << "[EVENT] Received ParameterRequest for preampIndex " << idx << endl;
+            int idx = msg.value("channelIndex", -1);
+            cout << "[EVENT] Received ParameterRequest for channelIndex " << idx << endl;
             json resp = MakeParameterResponse(idx);
             sockaddr_in fixed_src = src;
             fixed_src.sin_port = htons(VIRGIL_PORT);
             SendUdp(resp, fixed_src);
             cout << "[EVENT] Sent ParameterResponse" << endl;
         } else if (type == "StatusRequest") {
-            int idx = msg.value("preampIndex", -1);
-            cout << "[EVENT] Received StatusRequest for preampIndex " << idx << endl;
+            int idx = msg.value("channelIndex", -1);
+            cout << "[EVENT] Received StatusRequest for channelIndex " << idx << endl;
+            if (idx < -1 || idx >= (int)preamps.size()) {
+                json err = MakeErrorResponse("ChannelIndexInvalid", "Invalid channel index");
+                sockaddr_in fixed_src = src;
+                fixed_src.sin_port = htons(VIRGIL_PORT);
+                SendUdp(err, fixed_src);
+                cout << "[EVENT] Sent ErrorResponse (invalid channel index)" << endl;
+                continue;
+            }
             json resp = MakeStatusUpdate(idx);
             sockaddr_in fixed_src = src;
             fixed_src.sin_port = htons(VIRGIL_PORT);
             SendUdp(resp, fixed_src);
             cout << "[EVENT] Sent StatusUpdate" << endl;
         } else if (type == "ParameterCommand") {
-            int idx = msg.value("preampIndex", -1);
-            cout << "[EVENT] Received ParameterCommand for preampIndex " << idx << endl;
-            if (idx < 0 || idx >= (int)preamps.size()) {
-                json err = MakeErrorResponse("PreampIndexInvalid", "Invalid preamp index");
+            int idx = msg.value("channelIndex", -1);
+            cout << "[EVENT] Received ParameterCommand for channelIndex " << idx << endl;
+            if (!msg.contains("channelIndex")) {
+                json err = MakeErrorResponse("MalformedMessage", "Missing channelIndex");
                 sockaddr_in fixed_src = src;
                 fixed_src.sin_port = htons(VIRGIL_PORT);
                 SendUdp(err, fixed_src);
-                cout << "[EVENT] Sent ErrorResponse (invalid preamp index)" << endl;
+                cout << "[EVENT] Sent ErrorResponse (missing channelIndex)" << endl;
+                continue;
+            }
+            if (idx < 0 || idx >= (int)preamps.size()) {
+                json err = MakeErrorResponse("ChannelIndexInvalid", "Invalid channel index");
+                sockaddr_in fixed_src = src;
+                fixed_src.sin_port = htons(VIRGIL_PORT);
+                SendUdp(err, fixed_src);
+                cout << "[EVENT] Sent ErrorResponse (invalid channel index)" << endl;
                 continue;
             }
             bool changed = false;

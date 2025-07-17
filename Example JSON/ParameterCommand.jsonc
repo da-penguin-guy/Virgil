@@ -8,14 +8,14 @@ Only the parameters being updated are included. Sent via UDP.
 */
 {
     "transmittingDevice": "MasterDanteDeviceName", // The device sending the command
-    "receivingDevice": "SlaveDanteDeviceName",     // The device to receive the command
     "messages" :
     [
         {
             "messageType" : "ParameterCommand", // Indicates this is a parameter command
-            "preampIndex" : 0,                    // The preamp to control
+            "channelIndex" : 0,                    // The channel to control
             "gain" : { "value" : 10 },           // Gain value to set (dB)
-            "lowcut" : { "value" : 0 }           // Lowcut filter value to set (Hz)
+            "lowcut" : { "value" : 0 },           // Lowcut filter value to set (Hz)
+            "transmitPower" : { "value" : "high" }   // Transmit power value to set (dB)
         }
     ]
 }

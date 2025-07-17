@@ -8,9 +8,8 @@ Set preampIndex to -1 to request device-level info, or to a preamp index for pre
 */
 {
     "transmittingDevice": "MasterDanteDeviceName", // The device sending the request
-    "receivingDevice": "SlaveDanteDeviceName",     // The device to receive the request
     "messages" :
     [
-        { "messageType" : "ParameterRequest", "preampIndex" : -2 } // Request device-level info and all preamps
+        { "messageType" : "ParameterRequest", "channelIndex" : -2 } // Request device-level info and all channels
     ]
 }

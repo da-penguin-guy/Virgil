@@ -8,7 +8,6 @@ It provides an error type and a human-readable error string. Error messages are 
 */
 {
     "transmittingDevice": "SlaveDanteDeviceName", // The device reporting the error
-    "receivingDevice": "MasterDanteDeviceName",   // The device that sent the request
     "messages" :
     [
         {
