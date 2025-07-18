@@ -6,6 +6,10 @@
 #include "nlohmann/json.hpp"
 #include <thread>
 #include <atomic>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <chrono>
 
 
 #ifdef _WIN32
@@ -22,6 +26,41 @@ typedef int socket_t;
 
 using json = nlohmann::json;
 using namespace std;
+
+// Global log file stream
+ofstream log_file;
+
+// Utility function to get current timestamp
+string get_timestamp() {
+    auto now = chrono::system_clock::now();
+    auto time_t = chrono::system_clock::to_time_t(now);
+    auto ms = chrono::duration_cast<chrono::milliseconds>(
+        now.time_since_epoch()) % 1000;
+    
+    stringstream ss;
+    ss << put_time(localtime(&time_t), "%Y-%m-%d %H:%M:%S");
+    ss << "." << setfill('0') << setw(3) << ms.count();
+    return ss.str();
+}
+
+// Enhanced logging function
+void log_detailed(const string& level, const string& category, const string& message, const string& data = "") {
+    if (log_file.is_open()) {
+        log_file << "[" << get_timestamp() << "] [" << level << "] [" << category << "] " << message;
+        if (!data.empty()) {
+            log_file << "\n    DATA: " << data;
+        }
+        log_file << endl;
+        log_file.flush(); // Ensure immediate write to disk
+    }
+    
+    // Also output to console for immediate feedback
+    cout << "[" << get_timestamp() << "] [" << level << "] [" << category << "] " << message;
+    if (!data.empty()) {
+        cout << "\n    DATA: " << data;
+    }
+    cout << endl;
+}
 
 constexpr int VIRGIL_PORT = 7889;
 constexpr char MULTICAST_BASE[] = "244.1.1";
@@ -135,13 +174,25 @@ void SendUdp(const json& message, const sockaddr_in& dest) {
     // Log the response being sent
     char ipstr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &dest.sin_addr, ipstr, sizeof(ipstr));
-    cout << "[DEBUG] Sending UDP response to " << ipstr << ":" << ntohs(dest.sin_port) << endl;
+    
+    string formatted_payload = payload;
+    // Try to format JSON for logging
+    try {
+        auto j = json::parse(payload);
+        formatted_payload = j.dump(2);
+    } catch (...) {
+        // If parsing fails, use original payload
+    }
+    
+    log_detailed("SEND", "UDP", "Sending UDP response", 
+                "To: " + string(ipstr) + ":" + to_string(ntohs(dest.sin_port)) + 
+                ", Size: " + to_string(payload.size()) + " bytes\n    Content:\n" + formatted_payload);
     
     int result = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&dest, sizeof(dest));
     if (result < 0) {
-        cout << "[ERROR] Failed to send UDP response, error: " << result << endl;
+        log_detailed("ERROR", "UDP", "Failed to send UDP response", "Error: " + to_string(result));
     } else {
-        cout << "[DEBUG] Successfully sent " << result << " bytes" << endl;
+        log_detailed("DEBUG", "UDP", "Successfully sent UDP response", "Bytes sent: " + to_string(result));
     }
     CloseSocket(sock);
 }
@@ -153,7 +204,26 @@ void SendMulticast(const json& message, const string& multicast_ip) {
     addr.sin_port = htons(VIRGIL_PORT);
     inet_pton(AF_INET, multicast_ip.c_str(), &addr.sin_addr);
     string payload = message.dump();
-    sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
+    
+    string formatted_payload = payload;
+    // Try to format JSON for logging
+    try {
+        auto j = json::parse(payload);
+        formatted_payload = j.dump(2);
+    } catch (...) {
+        // If parsing fails, use original payload
+    }
+    
+    log_detailed("SEND", "MULTICAST", "Sending multicast message", 
+                "To: " + multicast_ip + ":" + to_string(VIRGIL_PORT) + 
+                ", Size: " + to_string(payload.size()) + " bytes\n    Content:\n" + formatted_payload);
+    
+    int result = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
+    if (result < 0) {
+        log_detailed("ERROR", "MULTICAST", "Failed to send multicast", "Error: " + to_string(result));
+    } else {
+        log_detailed("DEBUG", "MULTICAST", "Successfully sent multicast", "Bytes sent: " + to_string(result));
+    }
     CloseSocket(sock);
 }
 
@@ -166,6 +236,8 @@ void AdvertiseMDNS() {
     addr.sin_port = htons(mdns_port);
     inet_pton(AF_INET, mdns_ip, &addr.sin_addr);
 
+    log_detailed("INFO", "MDNS", "Starting mDNS advertisement", "Target: " + string(mdns_ip) + ":" + to_string(mdns_port));
+
     while (mdns_running) {
         json mdns_advert;
         mdns_advert["serviceName"] = string(SLAVE_DANTE_NAME) + "." + "_virgil._udp.local.";
@@ -176,13 +248,20 @@ void AdvertiseMDNS() {
         mdns_advert["txt"]["model"] = deviceInfo.model;
         mdns_advert["txt"]["deviceType"] = deviceInfo.deviceType;
         string payload = mdns_advert.dump();
+        
+        log_detailed("DEBUG", "MDNS", "Sending mDNS advertisement", 
+                    "Size: " + to_string(payload.size()) + " bytes\n    Content:\n" + mdns_advert.dump(2));
+        
         int res = sendto(sock, payload.c_str(), payload.size(), 0, (sockaddr*)&addr, sizeof(addr));
         if (res < 0) {
-            cerr << "[EVENT] mDNS advertisement failed" << endl;
+            log_detailed("ERROR", "MDNS", "mDNS advertisement failed", "Error: " + to_string(res));
+        } else {
+            log_detailed("DEBUG", "MDNS", "mDNS advertisement sent", "Bytes sent: " + to_string(res));
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
     CloseSocket(sock);
+    log_detailed("INFO", "MDNS", "mDNS advertisement stopped", "");
 }
 
 json MakeErrorResponse(const string& errorValue, const string& errorString) {
@@ -300,39 +379,50 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
     // Log all received packets
     char ipstr[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &src.sin_addr, ipstr, sizeof(ipstr));
-    cout << "[DEBUG] Received packet from " << ipstr << ":" << ntohs(src.sin_port) << endl;
-    cout << "[DEBUG] Raw data: " << data << endl;
+    
+    string formatted_data = data;
+    // Try to format JSON for logging
+    try {
+        auto j = json::parse(data);
+        formatted_data = j.dump(2);
+    } catch (...) {
+        // If parsing fails, use original data
+    }
+    
+    log_detailed("RECV", "UDP", "Received UDP packet", 
+                "From: " + string(ipstr) + ":" + to_string(ntohs(src.sin_port)) + 
+                ", Size: " + to_string(data.size()) + " bytes\n    Content:\n" + formatted_data);
     
     json j;
     try {
         j = json::parse(data);
     } catch (...) {
-        cout << "[EVENT] Received invalid JSON" << endl;
+        log_detailed("ERROR", "JSON", "Received invalid JSON", "Raw data: " + data);
         // Send error response for invalid JSON
         json err = MakeErrorResponse("MalformedMessage", "Invalid JSON format");
         sockaddr_in fixed_src = src;
         fixed_src.sin_port = htons(VIRGIL_PORT);
         SendUdp(err, fixed_src);
-        cout << "[EVENT] Sent ErrorResponse (invalid JSON)" << endl;
+        log_detailed("EVENT", "ERROR", "Sent ErrorResponse for invalid JSON", "");
         return;
     }
     if (!j.contains("messages")) {
-        cout << "[EVENT] Malformed packet (no messages array)" << endl;
+        log_detailed("ERROR", "JSON", "Malformed packet - no messages array", "JSON: " + j.dump(2));
         // Send error response for malformed packet
         json err = MakeErrorResponse("MalformedMessage", "Missing 'messages' array");
         sockaddr_in fixed_src = src;
         fixed_src.sin_port = htons(VIRGIL_PORT);
         SendUdp(err, fixed_src);
-        cout << "[EVENT] Sent ErrorResponse (malformed packet)" << endl;
+        log_detailed("EVENT", "ERROR", "Sent ErrorResponse for malformed packet", "");
         return;
     }
     if (!j.contains("transmittingDevice")) {
-        cout << "[EVENT] Malformed packet (no transmittingDevice)" << endl;
+        log_detailed("ERROR", "JSON", "Malformed packet - no transmittingDevice", "JSON: " + j.dump(2));
         json err = MakeErrorResponse("MalformedMessage", "Missing 'transmittingDevice' field");
         sockaddr_in fixed_src = src;
         fixed_src.sin_port = htons(VIRGIL_PORT);
         SendUdp(err, fixed_src);
-        cout << "[EVENT] Sent ErrorResponse (missing transmittingDevice)" << endl;
+        log_detailed("EVENT", "ERROR", "Sent ErrorResponse for missing transmittingDevice", "");
         return;
     }
     for (const auto& msg : j["messages"]) {
@@ -341,39 +431,41 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
             continue;
         }
         string type = msg["messageType"];
+        log_detailed("INFO", "MESSAGE", "Processing message", "Type: " + type + ", Content: " + msg.dump(2));
+        
         if (type == "ParameterRequest") {
             int idx = msg.value("channelIndex", -1);
-            cout << "[EVENT] Received ParameterRequest for channelIndex " << idx << endl;
+            log_detailed("EVENT", "PARAM_REQ", "Received ParameterRequest", "channelIndex: " + to_string(idx));
             json resp = MakeParameterResponse(idx);
             sockaddr_in fixed_src = src;
             fixed_src.sin_port = htons(VIRGIL_PORT);
             SendUdp(resp, fixed_src);
-            cout << "[EVENT] Sent ParameterResponse" << endl;
+            log_detailed("EVENT", "PARAM_REQ", "Sent ParameterResponse", "");
         } else if (type == "StatusRequest") {
             int idx = msg.value("channelIndex", -1);
-            cout << "[EVENT] Received StatusRequest for channelIndex " << idx << endl;
+            log_detailed("EVENT", "STATUS_REQ", "Received StatusRequest", "channelIndex: " + to_string(idx));
             if (idx < -1 || idx >= (int)preamps.size()) {
                 json err = MakeErrorResponse("ChannelIndexInvalid", "Invalid channel index");
                 sockaddr_in fixed_src = src;
                 fixed_src.sin_port = htons(VIRGIL_PORT);
                 SendUdp(err, fixed_src);
-                cout << "[EVENT] Sent ErrorResponse (invalid channel index)" << endl;
+                log_detailed("EVENT", "STATUS_REQ", "Sent ErrorResponse for invalid channel index", "");
                 continue;
             }
             json resp = MakeStatusUpdate(idx);
             sockaddr_in fixed_src = src;
             fixed_src.sin_port = htons(VIRGIL_PORT);
             SendUdp(resp, fixed_src);
-            cout << "[EVENT] Sent StatusUpdate" << endl;
+            log_detailed("EVENT", "STATUS_REQ", "Sent StatusUpdate", "");
         } else if (type == "ParameterCommand") {
             int idx = msg.value("channelIndex", -1);
-            cout << "[EVENT] Received ParameterCommand for channelIndex " << idx << endl;
+            log_detailed("EVENT", "PARAM_CMD", "Received ParameterCommand", "channelIndex: " + to_string(idx));
             if (!msg.contains("channelIndex")) {
                 json err = MakeErrorResponse("MalformedMessage", "Missing channelIndex");
                 sockaddr_in fixed_src = src;
                 fixed_src.sin_port = htons(VIRGIL_PORT);
                 SendUdp(err, fixed_src);
-                cout << "[EVENT] Sent ErrorResponse (missing channelIndex)" << endl;
+                log_detailed("EVENT", "PARAM_CMD", "Sent ErrorResponse for missing channelIndex", "");
                 continue;
             }
             if (idx < 0 || idx >= (int)preamps.size()) {
@@ -381,7 +473,7 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                 sockaddr_in fixed_src = src;
                 fixed_src.sin_port = htons(VIRGIL_PORT);
                 SendUdp(err, fixed_src);
-                cout << "[EVENT] Sent ErrorResponse (invalid channel index)" << endl;
+                log_detailed("EVENT", "PARAM_CMD", "Sent ErrorResponse for invalid channel index", "");
                 continue;
             }
             bool changed = false;
@@ -510,7 +602,7 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
             
             // Add more parameter handling as needed
             if (changed) {
-                cout << "[EVENT] Parameter changed, sending StatusUpdate" << endl;
+                log_detailed("EVENT", "PARAM_CMD", "Parameters changed, sending StatusUpdate", "channelIndex: " + to_string(idx));
                 json update = MakeStatusUpdate(idx);
                 // Multicast to all masters
                 string mcast_ip = string(MULTICAST_BASE) + "." + to_string(idx);
@@ -518,23 +610,32 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
             }
         } else {
             // Handle unsupported message types
-            cout << "[EVENT] Received unsupported message type: " << type << endl;
+            log_detailed("EVENT", "MESSAGE", "Received unsupported message type", "Type: " + type);
             json err = MakeErrorResponse("UnrecognizedCommand", "Unsupported message type: " + type);
             sockaddr_in fixed_src = src;
             fixed_src.sin_port = htons(VIRGIL_PORT);
             SendUdp(err, fixed_src);
-            cout << "[EVENT] Sent ErrorResponse (unsupported message type)" << endl;
+            log_detailed("EVENT", "MESSAGE", "Sent ErrorResponse for unsupported message type", "");
         }
     }
 }
 
 int main() {
+    // Initialize log file
+    log_file.open("slave_debug.log", ios::app);
+    if (!log_file.is_open()) {
+        cerr << "Warning: Could not open log file" << endl;
+    }
+    
+    log_detailed("INFO", "STARTUP", "Slave starting up", "Version: Example Slave v1.0");
+    
     #ifdef _WIN32
         WSADATA wsa;
         if (WSAStartup(MAKEWORD(2,2), &wsa) != 0) {
-            cerr << "WSAStartup failed." << endl;
+            log_detailed("ERROR", "STARTUP", "WSAStartup failed", "Error code: " + to_string(WSAGetLastError()));
             return 0;
         }
+        log_detailed("INFO", "STARTUP", "WSAStartup successful", "");
     #endif
 
     // Initialize preamps
@@ -543,18 +644,22 @@ int main() {
     for (int i = 0; i < deviceInfo.preampCount; ++i) {
         preamps.emplace_back(i);
     }
+    log_detailed("INFO", "STARTUP", "Initialized preamps", "Count: " + to_string(deviceInfo.preampCount));
 
     // Start mDNS advertisement in a background thread
     std::thread mdns_thread(AdvertiseMDNS);
+    log_detailed("INFO", "STARTUP", "Started mDNS thread", "");
 
     // Create UDP socket for listening
     socket_t sock = CreateUdpSocket(VIRGIL_PORT);
     if (sock < 0) {
+        log_detailed("ERROR", "STARTUP", "Failed to create UDP socket", "Port: " + to_string(VIRGIL_PORT));
         mdns_running = false;
         if (mdns_thread.joinable()) mdns_thread.join();
         return 0;
     }
-    cout << "[EVENT] Slave listening on UDP port " << VIRGIL_PORT << endl;
+    log_detailed("INFO", "STARTUP", "Slave listening on UDP port", "Port: " + to_string(VIRGIL_PORT));
+    
     char buffer[4096];
     while (true) {
         sockaddr_in src_addr;
@@ -566,19 +671,21 @@ int main() {
         int len = recvfrom(sock, buffer, sizeof(buffer)-1, 0, (sockaddr*)&src_addr, &addrlen);
         if (len > 0) {
             buffer[len] = '\0';
-            // Debug: print all received UDP packets (raw)
-            char ipstr[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &src_addr.sin_addr, ipstr, sizeof(ipstr));
-            cout << "[DEBUG] Received UDP packet from " << ipstr << ":" << ntohs(src_addr.sin_port) << ":\n";
             HandlePacket(string(buffer, len), src_addr);
         }
     }
+    
+    log_detailed("INFO", "SHUTDOWN", "Slave shutting down", "");
     CloseSocket(sock);
     mdns_running = false;
     if (mdns_thread.joinable()) mdns_thread.join();
     #ifdef _WIN32
         WSACleanup();
     #endif
+    
+    if (log_file.is_open()) {
+        log_file.close();
+    }
     return 0;
 }
 
