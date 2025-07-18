@@ -264,7 +264,7 @@ public:
             throw runtime_error("Invalid IP address: " + ip);
         }
 
-        DWORD timeout = 2000; // 2s
+        DWORD timeout = 5000; // 5s - increased for cross-network communication
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
 
         // Log the resolved address and bound port
@@ -276,7 +276,6 @@ public:
         int bound_addr_len = sizeof(bound_addr);
         if (getsockname(sock, (sockaddr*)&bound_addr, &bound_addr_len) == 0) {
             int bound_port = ntohs(bound_addr.sin_port);
-            cout << "[UDP] Socket bound to port " << bound_port << " for receiving responses" << endl;
             log_detailed("INFO", "UDP", "UDP client initialized successfully", 
                         "Socket bound to port " + to_string(bound_port) + ", target: " + string(resolved_ip) + ":" + to_string(port));
         } else {
@@ -303,6 +302,9 @@ public:
         } else {
             log_detailed("DEBUG", "UDP", "Send successful", "Bytes sent: " + to_string(send_result));
         }
+        
+        // Add small delay to ensure message is sent before next operation
+        this_thread::sleep_for(chrono::milliseconds(10));
     }
     string recv() {
         char buf[BUF_SIZE] = {0};
@@ -383,17 +385,29 @@ public:
     void run_all_tests() {
         results.clear();
         test_parameter_request();
+        this_thread::sleep_for(chrono::milliseconds(100)); // Delay between test suites
         test_parameter_validation();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_locked_parameters();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_parameter_command();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_status_request();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_error_cases();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_device_level();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_continuous_status();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_precision_validation();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_enum_parameters();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_message_format_edge_cases();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_multicast_functionality();
+        this_thread::sleep_for(chrono::milliseconds(100));
         test_gain_pad_independence();
         print_summary();
     }
@@ -419,8 +433,11 @@ public:
     }
 
     // Helper: Wait for a response and validate
-    bool wait_for_response(const ExpectedResponse& expected, string& out_details, int tries = 3, int ms_wait = 500) {
+    bool wait_for_response(const ExpectedResponse& expected, string& out_details, int tries = 5, int ms_wait = 800) {
         log_detailed("INFO", "WAIT", "Waiting for response", "Type: " + expected.type + ", Tries: " + to_string(tries) + ", Wait: " + to_string(ms_wait) + "ms");
+        
+        // Add initial delay to allow message to be processed
+        this_thread::sleep_for(chrono::milliseconds(100));
         
         for (int i = 0; i < tries; ++i) {
             string resp = client.recv();
@@ -481,6 +498,10 @@ public:
                 {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", idx}}}}
             };
             client.send(req.dump());
+            
+            // Add delay between different test cases to prevent overwhelming the network
+            this_thread::sleep_for(chrono::milliseconds(50));
+            
             ExpectedResponse expected;
             if (idx >= 0) {
                 // Channel-level: check for gain and correct types
@@ -709,6 +730,35 @@ public:
     }
 
     void test_continuous_status() {
+        // First check what continuous parameters the device advertises
+        bool device_has_audio_level = false, device_has_rf_level = false, device_has_battery_level = false;
+        
+        // Query device-level parameters to see what continuous parameters are available
+        json param_req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", -1}}}}};
+        client.send(param_req.dump());
+        string param_resp = client.recv();
+        
+        if (!param_resp.empty()) {
+            try {
+                auto param_j = json::parse(param_resp);
+                if (param_j.contains("messages")) {
+                    for (const auto& msg : param_j["messages"]) {
+                        if (msg.contains("messageType") && msg["messageType"] == "ParameterResponse") {
+                            if (msg.contains("audioLevel")) device_has_audio_level = true;
+                            if (msg.contains("rfLevel")) device_has_rf_level = true;
+                            if (msg.contains("batteryLevel")) device_has_battery_level = true;
+                        }
+                    }
+                }
+            } catch (...) {}
+        }
+        
+        // If device has no continuous parameters, skip the test
+        if (!device_has_audio_level && !device_has_rf_level && !device_has_battery_level) {
+            add_result("Continuous status test", true, "Skipped - device has no continuous parameters");
+            return;
+        }
+        
         // Request status and expect multiple StatusUpdate messages
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "StatusRequest"}, {"channelIndex", 0}}}}};
         client.send(req.dump());
@@ -759,10 +809,19 @@ public:
         add_result("Continuous update timing", timing_ok && timestamps.size() >= 2, 
                   "Timing validation with " + to_string(timestamps.size()) + " samples");
         
-        // Report which continuous parameters were found
-        if (found_audio_level) add_result("audioLevel continuous updates", true, "Found audioLevel in updates");
-        if (found_rf_level) add_result("rfLevel continuous updates", true, "Found rfLevel in updates");  
-        if (found_battery_level) add_result("batteryLevel continuous updates", true, "Found batteryLevel in updates");
+        // Report which continuous parameters were found (only if device advertises them)
+        if (device_has_audio_level) {
+            add_result("audioLevel continuous updates", found_audio_level, 
+                      found_audio_level ? "Found audioLevel in updates" : "Device advertises audioLevel but not found in updates");
+        }
+        if (device_has_rf_level) {
+            add_result("rfLevel continuous updates", found_rf_level, 
+                      found_rf_level ? "Found rfLevel in updates" : "Device advertises rfLevel but not found in updates");
+        }
+        if (device_has_battery_level) {
+            add_result("batteryLevel continuous updates", found_battery_level, 
+                      found_battery_level ? "Found batteryLevel in updates" : "Device advertises batteryLevel but not found in updates");
+        }
     }
 
     void test_parameter_validation() {
@@ -835,6 +894,24 @@ public:
                 valid = false; issues += "precision not numeric. ";
             }
             
+            // Check precision is positive
+            if (gain.contains("precision") && gain["precision"].is_number()) {
+                float precision = gain["precision"].get<float>();
+                if (precision <= 0) {
+                    valid = false; issues += "precision must be positive. ";
+                }
+            }
+            
+            // Check minValue <= maxValue
+            if (gain.contains("minValue") && gain.contains("maxValue") && 
+                gain["minValue"].is_number() && gain["maxValue"].is_number()) {
+                float minVal = gain["minValue"].get<float>();
+                float maxVal = gain["maxValue"].get<float>();
+                if (minVal > maxVal) {
+                    valid = false; issues += "minValue (" + to_string(minVal) + ") > maxValue (" + to_string(maxVal) + "). ";
+                }
+            }
+            
             add_result("Gain parameter completeness ch" + to_string(channel_idx), valid, issues);
         }
 
@@ -868,25 +945,70 @@ public:
         if (param.contains("dataType")) {
             string dataType = param["dataType"];
             if (dataType != "int" && dataType != "float" && dataType != "bool" && 
-                dataType != "string" && dataType != "enum" && dataType != "percent") {
+                dataType != "string" && dataType != "enum") {
                 valid = false; issues += "Invalid dataType. ";
             }
             
             // Validate value matches dataType
             if (dataType == "bool" && !param["value"].is_boolean()) {
                 valid = false; issues += "Value type doesn't match bool dataType. ";
-            } else if ((dataType == "int" || dataType == "float" || dataType == "percent") && !param["value"].is_number()) {
+            } else if ((dataType == "int" || dataType == "float") && !param["value"].is_number()) {
                 valid = false; issues += "Value type doesn't match numeric dataType. ";
             } else if (dataType == "string" && !param["value"].is_string()) {
                 valid = false; issues += "Value type doesn't match string dataType. ";
             }
         }
         
+        // Validate unit-specific constraints
+        if (param.contains("unit")) {
+            string unit = param["unit"];
+            if (unit == "%") {
+                // Percent unit validation
+                if (param.contains("dataType") && param["dataType"] != "int") {
+                    valid = false; issues += "Percent unit must have int dataType. ";
+                }
+                if (param.contains("precision") && param["precision"] != 1) {
+                    valid = false; issues += "Percent unit must have precision of 1. ";
+                }
+                if (param.contains("minValue") && param["minValue"] != 0) {
+                    valid = false; issues += "Percent unit must have minValue of 0. ";
+                }
+                if (param.contains("maxValue") && param["maxValue"] != 100) {
+                    valid = false; issues += "Percent unit must have maxValue of 100. ";
+                }
+            } else if (unit == "dB" || unit == "Hz") {
+                // dB and Hz should be numeric types
+                if (param.contains("dataType") && param["dataType"] != "int" && param["dataType"] != "float") {
+                    valid = false; issues += unit + " unit must have numeric dataType. ";
+                }
+            }
+        }
+        
+        // Validate numeric constraints for all parameters
+        if (param.contains("precision") && param["precision"].is_number()) {
+            double precision = param["precision"].get<double>();
+            if (precision <= 0) {
+                valid = false; issues += "precision must be positive. ";
+            }
+        }
+        
+        // Check minValue <= maxValue for all parameters
+        if (param.contains("minValue") && param.contains("maxValue") && 
+            param["minValue"].is_number() && param["maxValue"].is_number()) {
+            double minVal = param["minValue"].get<double>();
+            double maxVal = param["maxValue"].get<double>();
+            if (minVal > maxVal) {
+                valid = false; issues += "minValue (" + to_string(minVal) + ") > maxValue (" + to_string(maxVal) + "). ";
+            }
+        }
+        
         // Special validations for specific parameters
         if (name == "subDevice" && param.contains("value")) {
             string value = param["value"];
-            if (value != "handheld" && value != "beltpack" && value != "gooseneck" && 
-                value != "iem" && value != "other") {
+            static const vector<string> valid_subdevices = {
+                "handheld", "beltpack", "gooseneck", "iem", "xlr", "trs", "disconnected", "other"
+            };
+            if (find(valid_subdevices.begin(), valid_subdevices.end(), value) == valid_subdevices.end()) {
                 valid = false; issues += "Invalid subDevice value. ";
             }
         }
@@ -901,6 +1023,18 @@ public:
         if ((name == "audioLevel" || name == "rfLevel" || name == "batteryLevel") && 
             param.contains("locked") && !param["locked"].get<bool>()) {
             valid = false; issues += "Continuous parameter should be locked. ";
+        }
+        
+        // Battery level should have percent unit
+        if (name == "batteryLevel") {
+            if (!param.contains("unit") || param["unit"] != "%") {
+                valid = false; issues += "batteryLevel should have unit '%'. ";
+            }
+        }
+        
+        // Audio and RF levels should have dB unit
+        if ((name == "audioLevel" || name == "rfLevel") && param.contains("unit") && param["unit"] != "dB") {
+            valid = false; issues += name + " should have unit 'dB'. ";
         }
         
         add_result(name + " parameter structure ch" + to_string(channel_idx), valid, issues);

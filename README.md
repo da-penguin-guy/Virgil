@@ -42,13 +42,14 @@ Virgil uses JSON-formatted messages and mDNS for device discovery. The default p
 ## Parameters
 Virgil supports the following parameters. Only `gain` is mandatory. This is so that, even with devices with fixed gain, the master can still see the fixed gain value.  
 If a feature is disabled, include its parameter with `locked: true`.  
-Only the `value` field is changeable by masters; all other fields are informational.
+Only the `value` field is changeable by masters; all other fields are informational.  
+If the way something is formatted make zero sense, its to make it easier to have a little icon on the gui
 
 **Parameter Field Format:**
 - `name` (string): Parameter name in JSON messages
 - `description` (string): What the parameter controls
 - `unit` (string, optional): unit of measurement
-- `dataType` (string): Data type (`int`, `float`, `bool`, `string`, `enum`, `percent`)
+- `dataType` (string): Data type (`int`, `float`, `bool`, `string`, `enum`)
 - `minValue` (int/float, optional): The minimum value of the parameter
 - `maxValue` (int/float, optional): The maximum value of the parameter
 - `precision` (number, optional): Step size. If not included, assume to be 1
@@ -58,6 +59,7 @@ Only the `value` field is changeable by masters; all other fields are informatio
 **Notes**
 - For precision ≠ 1, values start from minValue (e.g., precision 3dB, minValue -5dB: options are -5, -2, 1, 4, ...).
 - The data type `enum` is not a usual enum. It is instead represented as an array of strings. All the strings in the array are valid values. The values can be found in the `enumValues` field.
+- Percent is a unit, not a dataType. If the unit is `%` then the `minValue` should be `0`, the `maxValue` should be `100`, the `precision` should be `1`, and the `dataType` should be `int`
 
 ```jsonc
 {
@@ -143,7 +145,7 @@ Only the `value` field is changeable by masters; all other fields are informatio
 - Says what type of device is connected to this channel. Primarily used for wireless recivers
 - **dataType:** string
 - **locked** Always True
-- **Notes:** This string has predefined values. They are `handheld`, `beltpack`, `gooseneck`, `iem`, and `other`
+- **Notes:** This string has predefined values. They are `handheld`, `beltpack`, `gooseneck`, `iem`, `xlr`, `trs`, `disconnected` and `other`.
 
 #### audioLevel
 - Shows the level of the audio for that channel
@@ -272,7 +274,7 @@ All messages are JSON objects with these top-level fields:
   - UnableToChangeValue
   - DeviceNotFound
   - ChannelIndexInvalid
-  - Parameterlocked
+  - ParameterLocked
   - ParameterUnsupported
   - MalformedMessage
   - Busy

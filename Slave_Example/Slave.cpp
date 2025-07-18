@@ -188,7 +188,6 @@ void AdvertiseMDNS() {
 json MakeErrorResponse(const string& errorValue, const string& errorString) {
     json msg;
     msg["transmittingDevice"] = SLAVE_DANTE_NAME;
-    msg["receivingDevice"] = "MasterDanteDeviceName";
     msg["messages"] = json::array();
     json m;
     m["messageType"] = "ErrorResponse";
@@ -202,7 +201,6 @@ json MakeStatusUpdate(int channelIndex) {
     lock_guard<mutex> lock(state_mutex);
     json msg;
     msg["transmittingDevice"] = SLAVE_DANTE_NAME;
-    msg["receivingDevice"] = "MasterDanteDeviceName"; // Add receiving device
     msg["messages"] = json::array();
     if (channelIndex >= 0 && channelIndex < (int)preamps.size()) {
         json m;
@@ -236,7 +234,6 @@ json MakeParameterResponse(int channelIndex) {
     lock_guard<mutex> lock(state_mutex);
     json msg;
     msg["transmittingDevice"] = SLAVE_DANTE_NAME;
-    msg["receivingDevice"] = "MasterDanteDeviceName";
     msg["messages"] = json::array();
     
     if (channelIndex == -1) {
@@ -391,6 +388,14 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
             lock_guard<mutex> lock(state_mutex);
             Preamp& p = preamps[idx];
             if (msg.contains("gain")) {
+                if (!msg["gain"].contains("value") || !msg["gain"]["value"].is_number()) {
+                    json err = MakeErrorResponse("InvalidValueType", "Gain value must be a number");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    cout << "[EVENT] Sent ErrorResponse (invalid gain type)" << endl;
+                    continue;
+                }
                 int val = msg["gain"]["value"];
                 if (val < p["gain"]["minValue"] || val > p["gain"]["maxValue"]) {
                     json err = MakeErrorResponse("ValueOutOfRange", "Gain out of range");
@@ -487,6 +492,22 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                     continue;
                 }
             }
+            
+            // Check for unsupported parameters
+            vector<string> supported_params = {"gain", "lowcut", "lowcutEnable", "pad", "phantomPower", "polarity", "rfEnable", "transmitPower", "squelch", "transmitterConnected", "subDevice", "audioLevel", "rfLevel", "batteryLevel"};
+            for (auto& [key, value] : msg.items()) {
+                if (key != "messageType" && key != "channelIndex") {
+                    if (find(supported_params.begin(), supported_params.end(), key) == supported_params.end()) {
+                        json err = MakeErrorResponse("ParameterUnsupported", "Parameter " + key + " is not supported");
+                        sockaddr_in fixed_src = src;
+                        fixed_src.sin_port = htons(VIRGIL_PORT);
+                        SendUdp(err, fixed_src);
+                        cout << "[EVENT] Sent ErrorResponse (unsupported parameter: " << key << ")" << endl;
+                        return;
+                    }
+                }
+            }
+            
             // Add more parameter handling as needed
             if (changed) {
                 cout << "[EVENT] Parameter changed, sending StatusUpdate" << endl;
@@ -495,6 +516,14 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                 string mcast_ip = string(MULTICAST_BASE) + "." + to_string(idx);
                 SendMulticast(update, mcast_ip);
             }
+        } else {
+            // Handle unsupported message types
+            cout << "[EVENT] Received unsupported message type: " << type << endl;
+            json err = MakeErrorResponse("UnrecognizedCommand", "Unsupported message type: " + type);
+            sockaddr_in fixed_src = src;
+            fixed_src.sin_port = htons(VIRGIL_PORT);
+            SendUdp(err, fixed_src);
+            cout << "[EVENT] Sent ErrorResponse (unsupported message type)" << endl;
         }
     }
 }
