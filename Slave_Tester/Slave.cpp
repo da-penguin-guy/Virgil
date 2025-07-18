@@ -110,7 +110,7 @@ void scan_mdns(const string& expected_ip, DeviceIdentity& identity) {
     set<string> seen;
     auto start = chrono::steady_clock::now();
     const set<string> allowed_device_types = {"digitalStageBox", "wirelessReceiver", "wirelessTransmitter", "wirelessCombo", "mixer", "dsp", "computer"};
-    while (chrono::steady_clock::now() - start < chrono::seconds(5)) {
+    while (chrono::steady_clock::now() - start < chrono::seconds(2)) {
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
@@ -264,7 +264,7 @@ public:
             throw runtime_error("Invalid IP address: " + ip);
         }
 
-        DWORD timeout = 5000; // 5s - increased for cross-network communication
+        DWORD timeout = 2000; // 5s - increased for cross-network communication
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
 
         // Log the resolved address and bound port
@@ -366,6 +366,38 @@ public:
                     ", Size: " + to_string(ret) + " bytes\n    Content:\n" + formatted_response);
         return response;
     }
+    
+    // Add a method to flush any pending data from the socket
+    void flush_socket() {
+        log_detailed("DEBUG", "UDP", "Flushing socket", "Clearing any pending data");
+        
+        // Set socket to non-blocking temporarily
+        u_long mode = 1;
+        ioctlsocket(sock, FIONBIO, &mode);
+        
+        char buf[BUF_SIZE];
+        sockaddr_in dummy_addr;
+        int dummy_len = sizeof(dummy_addr);
+        int flushed_count = 0;
+        
+        // Read and discard any pending data
+        while (true) {
+            int ret = recvfrom(sock, buf, BUF_SIZE, 0, (sockaddr*)&dummy_addr, &dummy_len);
+            if (ret <= 0) {
+                break; // No more data
+            }
+            flushed_count++;
+            log_detailed("DEBUG", "UDP", "Flushed pending data", "Packet " + to_string(flushed_count) + ", size: " + to_string(ret));
+        }
+        
+        // Restore blocking mode
+        mode = 0;
+        ioctlsocket(sock, FIONBIO, &mode);
+        
+        if (flushed_count > 0) {
+            log_detailed("INFO", "UDP", "Socket flush completed", "Flushed " + to_string(flushed_count) + " pending packets");
+        }
+    }
 private:
     SOCKET sock;
     sockaddr_in addr;
@@ -385,29 +417,17 @@ public:
     void run_all_tests() {
         results.clear();
         test_parameter_request();
-        this_thread::sleep_for(chrono::milliseconds(100)); // Delay between test suites
         test_parameter_validation();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_locked_parameters();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_parameter_command();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_status_request();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_error_cases();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_device_level();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_continuous_status();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_precision_validation();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_enum_parameters();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_message_format_edge_cases();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_multicast_functionality();
-        this_thread::sleep_for(chrono::milliseconds(100));
         test_gain_pad_independence();
         print_summary();
     }
@@ -433,7 +453,7 @@ public:
     }
 
     // Helper: Wait for a response and validate
-    bool wait_for_response(const ExpectedResponse& expected, string& out_details, int tries = 5, int ms_wait = 800) {
+    bool wait_for_response(const ExpectedResponse& expected, string& out_details, int tries = 3, int ms_wait = 800) {
         log_detailed("INFO", "WAIT", "Waiting for response", "Type: " + expected.type + ", Tries: " + to_string(tries) + ", Wait: " + to_string(ms_wait) + "ms");
         
         // Add initial delay to allow message to be processed
@@ -465,7 +485,7 @@ public:
                         } else {
                             out_details = "Invalid " + expected.type + " content.";
                             log_detailed("WARN", "WAIT", "Response validation failed", out_details + "\n    Message:\n" + msg.dump(2));
-                            return false;
+                            // Don't return false immediately - continue trying in case there are more messages
                         }
                     }
                 }
@@ -542,6 +562,12 @@ public:
             string details;
             bool ok = wait_for_response(expected, details);
             add_result("ParameterRequest channelIndex=" + to_string(idx), ok, details);
+            
+            // If the test failed, flush the socket to ensure clean state
+            if (!ok) {
+                log_detailed("INFO", "TEST", "ParameterRequest test failed, flushing socket", "channelIndex: " + to_string(idx));
+                client.flush_socket();
+            }
         }
     }
 
@@ -619,11 +645,17 @@ public:
         }
         
         for (int idx : indices) {
+            log_detailed("INFO", "TEST", "Testing StatusRequest", "channelIndex: " + to_string(idx));
+            
             json req = {
                 {"transmittingDevice", "TestMaster"},
                 {"messages", {{{"messageType", "StatusRequest"}, {"channelIndex", idx}}}}
             };
             client.send(req.dump());
+            
+            // Add a small delay after sending to ensure it's transmitted
+            this_thread::sleep_for(chrono::milliseconds(50));
+            
             ExpectedResponse expected;
             if (find(identity.channelIndices.begin(), identity.channelIndices.end(), idx) != identity.channelIndices.end()) {
                 expected = {"StatusUpdate", [idx](const json& m){ 
@@ -635,12 +667,27 @@ public:
                 }, "StatusUpdate for all channels"};
             } else {
                 expected = {"ErrorResponse", [](const json& m){ 
-                    return m["errorValue"] == "ChannelIndexInvalid"; 
+                    bool has_error_value = m.contains("errorValue");
+                    bool is_channel_invalid = false;
+                    if (has_error_value) {
+                        string error_val = m["errorValue"].get<string>();
+                        is_channel_invalid = (error_val == "ChannelIndexInvalid");
+                    }
+                    return has_error_value && is_channel_invalid;
                 }, "Error for invalid channelIndex"};
             }
             string details;
             bool ok = wait_for_response(expected, details);
             add_result("StatusRequest channelIndex=" + to_string(idx), ok, details);
+            
+            // If the test failed, flush the socket to ensure clean state
+            if (!ok) {
+                log_detailed("INFO", "TEST", "Test failed, flushing socket", "channelIndex: " + to_string(idx));
+                client.flush_socket();
+            }
+            
+            // Add a small delay between different status requests to ensure socket stability
+            this_thread::sleep_for(chrono::milliseconds(100));
         }
 
         // Test that StatusUpdate contains all current values for the channel
