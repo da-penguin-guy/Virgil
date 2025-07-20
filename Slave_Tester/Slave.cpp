@@ -242,6 +242,16 @@ public:
             throw runtime_error("socket() failed");
         }
 
+        // Set socket buffer sizes to prevent overflow
+        int send_buffer = 65536;  // 64KB send buffer
+        int recv_buffer = 65536;  // 64KB receive buffer
+        setsockopt(sock, SOL_SOCKET, SO_SNDBUF, (char*)&send_buffer, sizeof(send_buffer));
+        setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&recv_buffer, sizeof(recv_buffer));
+
+        // Enable address reuse to prevent binding conflicts
+        BOOL reuse = TRUE;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&reuse, sizeof(reuse));
+
         // Bind to VIRGIL_PORT (7889) so we receive responses on the correct port
         sockaddr_in bind_addr{};
         bind_addr.sin_family = AF_INET;
@@ -264,7 +274,7 @@ public:
             throw runtime_error("Invalid IP address: " + ip);
         }
 
-        DWORD timeout = 2000; // 5s - increased for cross-network communication
+        DWORD timeout = 2000; // 2s timeout
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
 
         // Log the resolved address and bound port
@@ -283,7 +293,13 @@ public:
                         "Socket ready for communication to " + string(resolved_ip) + ":" + to_string(port));
         }
     }
-    ~UdpClient() { closesocket(sock); WSACleanup(); }
+    ~UdpClient() { 
+        if (sock != INVALID_SOCKET) {
+            closesocket(sock); 
+        }
+        WSACleanup(); 
+    }
+    
     void send(const string& msg) {
         string formatted_msg = msg;
         // Try to format JSON for logging
@@ -293,18 +309,26 @@ public:
         } catch (...) {
             // If parsing fails, use original message
         }
-        
+
+        // Print out the IP and port being sent to
+        char dest_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &addr.sin_addr, dest_ip, sizeof(dest_ip));
+        int dest_port = ntohs(addr.sin_port);
+        cout << "[SEND] Sending to " << dest_ip << ":" << dest_port << endl;
+
         log_detailed("SEND", "UDP", "Sending message", "Size: " + to_string(msg.size()) + " bytes\n    Content:\n" + formatted_msg);
+
         int send_result = sendto(sock, msg.c_str(), (int)msg.size(), 0, (sockaddr*)&addr, sizeof(addr));
         if (send_result == SOCKET_ERROR) {
             int error = WSAGetLastError();
             log_detailed("ERROR", "UDP", "Send failed", "WSA Error: " + to_string(error));
+            cout << "ERROR";
         } else {
             log_detailed("DEBUG", "UDP", "Send successful", "Bytes sent: " + to_string(send_result));
         }
-        
-        // Add small delay to ensure message is sent before next operation
-        this_thread::sleep_for(chrono::milliseconds(10));
+
+        // Add small delay to ensure message is sent and prevent overwhelming the receiver
+        this_thread::sleep_for(chrono::milliseconds(20));
     }
     string recv() {
         char buf[BUF_SIZE] = {0};
@@ -371,9 +395,17 @@ public:
     void flush_socket() {
         log_detailed("DEBUG", "UDP", "Flushing socket", "Clearing any pending data");
         
+        if (sock == INVALID_SOCKET) {
+            log_detailed("WARN", "UDP", "Cannot flush invalid socket", "Socket is invalid");
+            return;
+        }
+        
         // Set socket to non-blocking temporarily
         u_long mode = 1;
-        ioctlsocket(sock, FIONBIO, &mode);
+        if (ioctlsocket(sock, FIONBIO, &mode) == SOCKET_ERROR) {
+            log_detailed("WARN", "UDP", "Failed to set non-blocking mode", "WSA Error: " + to_string(WSAGetLastError()));
+            return;
+        }
         
         char buf[BUF_SIZE];
         sockaddr_in dummy_addr;
@@ -388,11 +420,19 @@ public:
             }
             flushed_count++;
             log_detailed("DEBUG", "UDP", "Flushed pending data", "Packet " + to_string(flushed_count) + ", size: " + to_string(ret));
+            
+            // Safety limit to prevent infinite loop
+            if (flushed_count > 100) {
+                log_detailed("WARN", "UDP", "Flush limit reached", "Stopped at " + to_string(flushed_count) + " packets");
+                break;
+            }
         }
         
         // Restore blocking mode
         mode = 0;
-        ioctlsocket(sock, FIONBIO, &mode);
+        if (ioctlsocket(sock, FIONBIO, &mode) == SOCKET_ERROR) {
+            log_detailed("WARN", "UDP", "Failed to restore blocking mode", "WSA Error: " + to_string(WSAGetLastError()));
+        }
         
         if (flushed_count > 0) {
             log_detailed("INFO", "UDP", "Socket flush completed", "Flushed " + to_string(flushed_count) + " pending packets");
@@ -416,6 +456,9 @@ public:
 
     void run_all_tests() {
         results.clear();
+        log_detailed("INFO", "TEST", "Starting all tests", "Beginning comprehensive test suite");
+        
+        // Run tests with minimal delays between groups
         test_parameter_request();
         test_parameter_validation();
         test_locked_parameters();
@@ -429,7 +472,9 @@ public:
         test_message_format_edge_cases();
         test_multicast_functionality();
         test_gain_pad_independence();
+        
         print_summary();
+        log_detailed("INFO", "TEST", "All tests completed", "Test suite finished");
     }
 
     UdpClient client;
@@ -512,6 +557,7 @@ public:
         }
         sort(indices.begin(), indices.end());
         indices.erase(unique(indices.begin(), indices.end()), indices.end());
+        
         for (int idx : indices) {
             json req = {
                 {"transmittingDevice", "TestMaster"},
@@ -519,7 +565,7 @@ public:
             };
             client.send(req.dump());
             
-            // Add delay between different test cases to prevent overwhelming the network
+            // Add small delay between different test cases to prevent overwhelming the network
             this_thread::sleep_for(chrono::milliseconds(50));
             
             ExpectedResponse expected;

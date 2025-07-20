@@ -91,7 +91,7 @@ struct Preamp : public json {
             {"dataType", "float"}, {"unit", "dB"}, {"precision", 0.1}, {"value", -45.2}, {"locked", true}
         };
         (*this)["batteryLevel"] = {
-            {"dataType", "percent"}, {"precision", 1}, {"value", 85}, {"minValue", 0}, {"maxValue", 100}, {"locked", true}
+            {"dataType", "int"}, {"unit", "%"}, {"precision", 1}, {"value", 85}, {"minValue", 0}, {"maxValue", 100}, {"locked", true}
         };
     }
     int index() const { return (*this)["channelIndex"]; }
