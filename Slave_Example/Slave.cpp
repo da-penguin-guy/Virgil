@@ -360,6 +360,15 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
         SendUdp(err, fixed_src);
         return;
     }
+    
+    // Check for empty messages array
+    if (j["messages"].empty()) {
+        json err = MakeErrorResponse("MalformedMessage", "Empty messages array");
+        sockaddr_in fixed_src = src;
+        fixed_src.sin_port = htons(VIRGIL_PORT);
+        SendUdp(err, fixed_src);
+        return;
+    }
     if (!j.contains("transmittingDevice")) {
         json err = MakeErrorResponse("MalformedMessage", "Missing 'transmittingDevice' field");
         sockaddr_in fixed_src = src;
@@ -369,7 +378,10 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
     }
     for (const auto& msg : j["messages"]) {
         if (!msg.contains("messageType")) {
-
+            json err = MakeErrorResponse("MalformedMessage", "Missing messageType");
+            sockaddr_in fixed_src = src;
+            fixed_src.sin_port = htons(VIRGIL_PORT);
+            SendUdp(err, fixed_src);
             continue;
         }
         string type = msg["messageType"];
@@ -412,95 +424,8 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
             bool changed = false;
             lock_guard<mutex> lock(state_mutex);
             Preamp& p = preamps[idx];
-            if (msg.contains("gain")) {
-                if (!msg["gain"].contains("value") || !msg["gain"]["value"].is_number()) {
-                    json err = MakeErrorResponse("InvalidValueType", "Gain value must be a number");
-                    sockaddr_in fixed_src = src;
-                    fixed_src.sin_port = htons(VIRGIL_PORT);
-                    SendUdp(err, fixed_src);
-                    break; // Exit the parameter processing loop for this message
-                }
-                int val = msg["gain"]["value"];
-                if (val < p["gain"]["minValue"] || val > p["gain"]["maxValue"]) {
-                    json err = MakeErrorResponse("ValueOutOfRange", "Gain out of range");
-                    sockaddr_in fixed_src = src;
-                    fixed_src.sin_port = htons(VIRGIL_PORT);
-                    SendUdp(err, fixed_src);
-                    break; // Exit the parameter processing loop for this message
-                }
-                p["gain"]["value"] = val;
-                changed = true;
-            }
-            if (msg.contains("lowcut")) {
-                int val = msg["lowcut"]["value"];
-                if (val < p["lowcut"]["minValue"] || val > p["lowcut"]["maxValue"]) {
-                    json err = MakeErrorResponse("ValueOutOfRange", "Lowcut out of range");
-                    sockaddr_in fixed_src = src;
-                    fixed_src.sin_port = htons(VIRGIL_PORT);
-                    SendUdp(err, fixed_src);
-                    break; // Exit the parameter processing loop for this message
-                }
-                p["lowcut"]["value"] = val;
-                changed = true;
-            }
-            if (msg.contains("pad")) {
-                bool val = msg["pad"]["value"];
-                p["pad"]["value"] = val;
-                changed = true;
-            }
-            if (msg.contains("polarity")) {
-                bool val = msg["polarity"]["value"];
-                p["polarity"]["value"] = val;
-                changed = true;
-            }
-            if (msg.contains("phantomPower")) {
-                bool val = msg["phantomPower"]["value"];
-                p["phantomPower"]["value"] = val;
-                changed = true;
-            }
-            if (msg.contains("lowcutEnable")) {
-                bool val = msg["lowcutEnable"]["value"];
-                p["lowcutEnable"]["value"] = val;
-                changed = true;
-            }
-            if (msg.contains("rfEnable")) {
-                bool val = msg["rfEnable"]["value"];
-                p["rfEnable"]["value"] = val;
-                changed = true;
-            }
-            if (msg.contains("squelch")) {
-                int val = msg["squelch"]["value"];
-                if (val < p["squelch"]["minValue"] || val > p["squelch"]["maxValue"]) {
-                    json err = MakeErrorResponse("ValueOutOfRange", "Squelch out of range");
-                    sockaddr_in fixed_src = src;
-                    fixed_src.sin_port = htons(VIRGIL_PORT);
-                    SendUdp(err, fixed_src);
-                    break; // Exit the parameter processing loop for this message
-                }
-                p["squelch"]["value"] = val;
-                changed = true;
-            }
-            if (msg.contains("transmitPower")) {
-                string val = msg["transmitPower"]["value"];
-                // Validate enum value
-                bool valid = false;
-                for (const auto& enumVal : p["transmitPower"]["enumValues"]) {
-                    if (enumVal == val) {
-                        valid = true;
-                        break;
-                    }
-                }
-                if (!valid) {
-                    json err = MakeErrorResponse("ValueOutOfRange", "Invalid transmitPower value");
-                    sockaddr_in fixed_src = src;
-                    fixed_src.sin_port = htons(VIRGIL_PORT);
-                    SendUdp(err, fixed_src);
-                    break; // Exit the parameter processing loop for this message
-                }
-                p["transmitPower"]["value"] = val;
-                changed = true;
-            }
-            // Check for attempts to change locked parameters
+            
+            // Check for attempts to change locked parameters first
             vector<string> locked_params = {"transmitterConnected", "subDevice", "audioLevel", "rfLevel", "batteryLevel"};
             for (const string& param : locked_params) {
                 if (msg.contains(param)) {
@@ -508,7 +433,7 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                     sockaddr_in fixed_src = src;
                     fixed_src.sin_port = htons(VIRGIL_PORT);
                     SendUdp(err, fixed_src);
-                    break; // Exit the parameter processing loop for this message
+                    return; // Exit completely
                 }
             }
             
@@ -524,6 +449,150 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                         return;
                     }
                 }
+            }
+            if (msg.contains("gain")) {
+                if (!msg["gain"].is_object() || !msg["gain"].contains("value") || !msg["gain"]["value"].is_number()) {
+                    json err = MakeErrorResponse("InvalidValueType", "Gain value must be a number");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                int val = msg["gain"]["value"];
+                if (val < p["gain"]["minValue"] || val > p["gain"]["maxValue"]) {
+                    json err = MakeErrorResponse("ValueOutOfRange", "Gain out of range");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                p["gain"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("lowcut")) {
+                if (!msg["lowcut"].is_object() || !msg["lowcut"].contains("value") || !msg["lowcut"]["value"].is_number()) {
+                    json err = MakeErrorResponse("InvalidValueType", "Lowcut value must be a number");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                int val = msg["lowcut"]["value"];
+                if (val < p["lowcut"]["minValue"] || val > p["lowcut"]["maxValue"]) {
+                    json err = MakeErrorResponse("ValueOutOfRange", "Lowcut out of range");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                p["lowcut"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("pad")) {
+                if (!msg["pad"].is_object() || !msg["pad"].contains("value") || !msg["pad"]["value"].is_boolean()) {
+                    json err = MakeErrorResponse("InvalidValueType", "Pad value must be a boolean");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                bool val = msg["pad"]["value"];
+                p["pad"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("polarity")) {
+                if (!msg["polarity"].is_object() || !msg["polarity"].contains("value") || !msg["polarity"]["value"].is_boolean()) {
+                    json err = MakeErrorResponse("InvalidValueType", "Polarity value must be a boolean");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                bool val = msg["polarity"]["value"];
+                p["polarity"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("phantomPower")) {
+                if (!msg["phantomPower"].is_object() || !msg["phantomPower"].contains("value") || !msg["phantomPower"]["value"].is_boolean()) {
+                    json err = MakeErrorResponse("InvalidValueType", "PhantomPower value must be a boolean");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                bool val = msg["phantomPower"]["value"];
+                p["phantomPower"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("lowcutEnable")) {
+                if (!msg["lowcutEnable"].is_object() || !msg["lowcutEnable"].contains("value") || !msg["lowcutEnable"]["value"].is_boolean()) {
+                    json err = MakeErrorResponse("InvalidValueType", "LowcutEnable value must be a boolean");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                bool val = msg["lowcutEnable"]["value"];
+                p["lowcutEnable"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("rfEnable")) {
+                if (!msg["rfEnable"].is_object() || !msg["rfEnable"].contains("value") || !msg["rfEnable"]["value"].is_boolean()) {
+                    json err = MakeErrorResponse("InvalidValueType", "RfEnable value must be a boolean");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                bool val = msg["rfEnable"]["value"];
+                p["rfEnable"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("squelch")) {
+                if (!msg["squelch"].is_object() || !msg["squelch"].contains("value") || !msg["squelch"]["value"].is_number()) {
+                    json err = MakeErrorResponse("InvalidValueType", "Squelch value must be a number");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                int val = msg["squelch"]["value"];
+                if (val < p["squelch"]["minValue"] || val > p["squelch"]["maxValue"]) {
+                    json err = MakeErrorResponse("ValueOutOfRange", "Squelch out of range");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                p["squelch"]["value"] = val;
+                changed = true;
+            }
+            if (msg.contains("transmitPower")) {
+                if (!msg["transmitPower"].is_object() || !msg["transmitPower"].contains("value") || !msg["transmitPower"]["value"].is_string()) {
+                    json err = MakeErrorResponse("InvalidValueType", "TransmitPower value must be a string");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                string val = msg["transmitPower"]["value"];
+                // Validate enum value
+                bool valid = false;
+                for (const auto& enumVal : p["transmitPower"]["enumValues"]) {
+                    if (enumVal == val) {
+                        valid = true;
+                        break;
+                    }
+                }
+                if (!valid) {
+                    json err = MakeErrorResponse("ValueOutOfRange", "Invalid transmitPower value");
+                    sockaddr_in fixed_src = src;
+                    fixed_src.sin_port = htons(VIRGIL_PORT);
+                    SendUdp(err, fixed_src);
+                    return; // Exit completely
+                }
+                p["transmitPower"]["value"] = val;
+                changed = true;
             }
             
             // Add more parameter handling as needed

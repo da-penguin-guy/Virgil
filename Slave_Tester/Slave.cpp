@@ -39,9 +39,13 @@ string get_timestamp() {
 }
 
 // Enhanced logging function
-void log_detailed(const string& level, const string& category, const string& message, const string& data = "") {
+void log_detailed(const string& level, const string& category, const string& message, const string& data = "", const string& test_id = "") {
     if (log_file.is_open()) {
-        log_file << "[" << get_timestamp() << "] [" << level << "] [" << category << "] " << message;
+        log_file << "[" << get_timestamp() << "] [" << level << "] [" << category << "]";
+        if (!test_id.empty()) {
+            log_file << " [TEST-" << test_id << "]";
+        }
+        log_file << " " << message;
         if (!data.empty()) {
             log_file << "\n    DATA: " << data;
         }
@@ -61,14 +65,14 @@ struct DeviceIdentity {
 
 void scan_mdns(const string& expected_ip, DeviceIdentity& identity) {
     cout << "\n--- mDNS Scan for Virgil Devices ---\n";
-    log_detailed("INFO", "MDNS", "Starting mDNS scan for Virgil devices", "Expected IP: " + expected_ip);
+    log_detailed("INFO", "MDNS", "Starting mDNS scan for Virgil devices", "Expected IP: " + expected_ip, "MDNS-01");
     
     // Initialize Winsock for mDNS
     WSADATA wsaData;
     int wsa_result = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (wsa_result != 0) {
         cerr << "[mDNS] WSAStartup failed with error: " << wsa_result << "\n";
-        log_detailed("ERROR", "MDNS", "WSAStartup failed", "Error code: " + to_string(wsa_result));
+        log_detailed("ERROR", "MDNS", "WSAStartup failed", "Error code: " + to_string(wsa_result), "MDNS-01");
         return;
     }
     
@@ -300,7 +304,7 @@ public:
         WSACleanup(); 
     }
     
-    void send(const string& msg) {
+    void send(const string& msg, const string& test_id = "") {
         string formatted_msg = msg;
         // Try to format JSON for logging
         try {
@@ -316,21 +320,21 @@ public:
         int dest_port = ntohs(addr.sin_port);
         cout << "[SEND] Sending to " << dest_ip << ":" << dest_port << endl;
 
-        log_detailed("SEND", "UDP", "Sending message", "Size: " + to_string(msg.size()) + " bytes\n    Content:\n" + formatted_msg);
+        log_detailed("SEND", "UDP", "Sending message", "Size: " + to_string(msg.size()) + " bytes\n    Content:\n" + formatted_msg, test_id);
 
         int send_result = sendto(sock, msg.c_str(), (int)msg.size(), 0, (sockaddr*)&addr, sizeof(addr));
         if (send_result == SOCKET_ERROR) {
             int error = WSAGetLastError();
-            log_detailed("ERROR", "UDP", "Send failed", "WSA Error: " + to_string(error));
+            log_detailed("ERROR", "UDP", "Send failed", "WSA Error: " + to_string(error), test_id);
             cout << "ERROR";
         } else {
-            log_detailed("DEBUG", "UDP", "Send successful", "Bytes sent: " + to_string(send_result));
+            log_detailed("DEBUG", "UDP", "Send successful", "Bytes sent: " + to_string(send_result), test_id);
         }
 
         // Add small delay to ensure message is sent and prevent overwhelming the receiver
         this_thread::sleep_for(chrono::milliseconds(20));
     }
-    string recv() {
+    string recv(const string& test_id = "") {
         char buf[BUF_SIZE] = {0};
         sockaddr_in recv_addr;  // Use separate address structure for receiving
         int len = sizeof(recv_addr);
@@ -343,7 +347,7 @@ public:
             listening_port = ntohs(bound_addr.sin_port);
         }
         
-        log_detailed("DEBUG", "UDP", "Attempting to receive data", "Listening on port " + to_string(listening_port) + ", waiting for response...");
+        log_detailed("DEBUG", "UDP", "Attempting to receive data", "Listening on port " + to_string(listening_port) + ", waiting for response...", test_id);
         
         int ret = recvfrom(sock, buf, BUF_SIZE, 0, (sockaddr*)&recv_addr, &len);
         
@@ -362,7 +366,7 @@ public:
                 error_desc = "Error code " + to_string(error);
             }
             
-            log_detailed("RECV", "UDP", "No data received", "Return code: " + to_string(ret) + ", WSA Error: " + error_desc);
+            log_detailed("RECV", "UDP", "No data received", "Return code: " + to_string(ret) + ", WSA Error: " + error_desc, test_id);
             return "";
         }
         
@@ -375,7 +379,7 @@ public:
 
         // Log all raw data received for debugging
         log_detailed("DEBUG", "UDP", "Raw data received", "From: " + string(src_ip) + ":" + to_string(src_port) + 
-                    ", Size: " + to_string(ret) + " bytes\n    Raw: " + response);
+                    ", Size: " + to_string(ret) + " bytes\n    Raw: " + response, test_id);
 
         string formatted_response = response;
         // Try to format JSON for logging
@@ -387,23 +391,23 @@ public:
         }
 
         log_detailed("RECV", "UDP", "Received message", "From: " + string(src_ip) + ":" + to_string(src_port) + 
-                    ", Size: " + to_string(ret) + " bytes\n    Content:\n" + formatted_response);
+                    ", Size: " + to_string(ret) + " bytes\n    Content:\n" + formatted_response, test_id);
         return response;
     }
     
     // Add a method to flush any pending data from the socket
-    void flush_socket() {
-        log_detailed("DEBUG", "UDP", "Flushing socket", "Clearing any pending data");
+    void flush_socket(const string& test_id = "") {
+        log_detailed("DEBUG", "UDP", "Flushing socket", "Clearing any pending data", test_id);
         
         if (sock == INVALID_SOCKET) {
-            log_detailed("WARN", "UDP", "Cannot flush invalid socket", "Socket is invalid");
+            log_detailed("WARN", "UDP", "Cannot flush invalid socket", "Socket is invalid", test_id);
             return;
         }
         
         // Set socket to non-blocking temporarily
         u_long mode = 1;
         if (ioctlsocket(sock, FIONBIO, &mode) == SOCKET_ERROR) {
-            log_detailed("WARN", "UDP", "Failed to set non-blocking mode", "WSA Error: " + to_string(WSAGetLastError()));
+            log_detailed("WARN", "UDP", "Failed to set non-blocking mode", "WSA Error: " + to_string(WSAGetLastError()), test_id);
             return;
         }
         
@@ -419,11 +423,11 @@ public:
                 break; // No more data
             }
             flushed_count++;
-            log_detailed("DEBUG", "UDP", "Flushed pending data", "Packet " + to_string(flushed_count) + ", size: " + to_string(ret));
+            log_detailed("DEBUG", "UDP", "Flushed pending data", "Packet " + to_string(flushed_count) + ", size: " + to_string(ret), test_id);
             
             // Safety limit to prevent infinite loop
             if (flushed_count > 100) {
-                log_detailed("WARN", "UDP", "Flush limit reached", "Stopped at " + to_string(flushed_count) + " packets");
+                log_detailed("WARN", "UDP", "Flush limit reached", "Stopped at " + to_string(flushed_count) + " packets", test_id);
                 break;
             }
         }
@@ -431,11 +435,11 @@ public:
         // Restore blocking mode
         mode = 0;
         if (ioctlsocket(sock, FIONBIO, &mode) == SOCKET_ERROR) {
-            log_detailed("WARN", "UDP", "Failed to restore blocking mode", "WSA Error: " + to_string(WSAGetLastError()));
+            log_detailed("WARN", "UDP", "Failed to restore blocking mode", "WSA Error: " + to_string(WSAGetLastError()), test_id);
         }
         
         if (flushed_count > 0) {
-            log_detailed("INFO", "UDP", "Socket flush completed", "Flushed " + to_string(flushed_count) + " pending packets");
+            log_detailed("INFO", "UDP", "Socket flush completed", "Flushed " + to_string(flushed_count) + " pending packets", test_id);
         }
     }
 private:
@@ -452,11 +456,11 @@ struct ExpectedResponse {
 class VirgilTester {
 public:
     VirgilTester(const string& slave_ip, DeviceIdentity& identity)
-        : client(slave_ip, VIRGIL_PORT), slave_ip(slave_ip), identity(identity) {}
+        : client(slave_ip, VIRGIL_PORT), slave_ip(slave_ip), identity(identity), current_test_id("") {}
 
     void run_all_tests() {
         results.clear();
-        log_detailed("INFO", "TEST", "Starting all tests", "Beginning comprehensive test suite");
+        log_detailed("INFO", "TEST", "Starting all tests", "Beginning comprehensive test suite", "MAIN-01");
         
         // Run tests with minimal delays between groups
         test_parameter_request();
@@ -474,20 +478,21 @@ public:
         test_gain_pad_independence();
         
         print_summary();
-        log_detailed("INFO", "TEST", "All tests completed", "Test suite finished");
+        log_detailed("INFO", "TEST", "All tests completed", "Test suite finished", "MAIN-01");
     }
 
     UdpClient client;
     string slave_ip;
     vector<TestResult> results;
     DeviceIdentity& identity;
+    string current_test_id;
 
     void add_result(const string& name, bool passed, const string& details = "") {
         results.push_back({name, passed, details});
         cout << (passed ? "[PASS] " : "[FAIL] ") << name << (details.empty() ? "" : (": " + details)) << endl;
         
         // Detailed logging for file
-        log_detailed(passed ? "PASS" : "FAIL", "TEST", name, details.empty() ? "No additional details" : details);
+        log_detailed(passed ? "PASS" : "FAIL", "TEST", name, details.empty() ? "No additional details" : details, current_test_id);
     }
 
     void print_summary() {
@@ -499,54 +504,57 @@ public:
 
     // Helper: Wait for a response and validate
     bool wait_for_response(const ExpectedResponse& expected, string& out_details, int tries = 3, int ms_wait = 800) {
-        log_detailed("INFO", "WAIT", "Waiting for response", "Type: " + expected.type + ", Tries: " + to_string(tries) + ", Wait: " + to_string(ms_wait) + "ms");
+        log_detailed("INFO", "WAIT", "Waiting for response", "Type: " + expected.type + ", Tries: " + to_string(tries) + ", Wait: " + to_string(ms_wait) + "ms", current_test_id);
         
         // Add initial delay to allow message to be processed
         this_thread::sleep_for(chrono::milliseconds(100));
         
         for (int i = 0; i < tries; ++i) {
-            string resp = client.recv();
+            string resp = client.recv(current_test_id);
             if (resp.empty()) {
-                log_detailed("DEBUG", "WAIT", "Empty response received", "Attempt " + to_string(i + 1) + "/" + to_string(tries));
+                log_detailed("DEBUG", "WAIT", "Empty response received", "Attempt " + to_string(i + 1) + "/" + to_string(tries), current_test_id);
                 this_thread::sleep_for(chrono::milliseconds(ms_wait));
                 continue;
             }
             try {
                 auto j = json::parse(resp);
-                log_detailed("DEBUG", "WAIT", "Parsing received JSON", "Content:\n" + j.dump(2));
+                log_detailed("DEBUG", "WAIT", "Parsing received JSON", "Content:\n" + j.dump(2), current_test_id);
                 
                 if (!j.contains("messages")) {
-                    log_detailed("DEBUG", "WAIT", "No messages array in response", "JSON:\n" + j.dump(2));
+                    log_detailed("DEBUG", "WAIT", "No messages array in response", "JSON:\n" + j.dump(2), current_test_id);
                     continue;
                 }
                 for (const auto& msg : j["messages"]) {
                     if (msg.contains("messageType") && msg["messageType"] == expected.type) {
-                        log_detailed("DEBUG", "WAIT", "Found matching message type", "Type: " + expected.type + "\n    Message:\n" + msg.dump(2));
+                        log_detailed("DEBUG", "WAIT", "Found matching message type", "Type: " + expected.type + "\n    Message:\n" + msg.dump(2), current_test_id);
                         
                         if (expected.validator(msg)) {
                             out_details = "Valid " + expected.type + " received.";
-                            log_detailed("SUCCESS", "WAIT", "Response validation passed", out_details);
+                            log_detailed("SUCCESS", "WAIT", "Response validation passed", out_details, current_test_id);
                             return true;
                         } else {
                             out_details = "Invalid " + expected.type + " content.";
-                            log_detailed("WARN", "WAIT", "Response validation failed", out_details + "\n    Message:\n" + msg.dump(2));
+                            log_detailed("WARN", "WAIT", "Response validation failed", out_details + "\n    Message:\n" + msg.dump(2), current_test_id);
                             // Don't return false immediately - continue trying in case there are more messages
                         }
                     }
                 }
-                log_detailed("DEBUG", "WAIT", "No matching message type found", "Expected: " + expected.type + "\n    Messages:\n" + j["messages"].dump(2));
+                log_detailed("DEBUG", "WAIT", "No matching message type found", "Expected: " + expected.type + "\n    Messages:\n" + j["messages"].dump(2), current_test_id);
             } catch (const exception& e) { 
-                log_detailed("ERROR", "WAIT", "JSON parse error", "Error: " + string(e.what()) + "\n    Raw data: " + resp);
+                log_detailed("ERROR", "WAIT", "JSON parse error", "Error: " + string(e.what()) + "\n    Raw data: " + resp, current_test_id);
                 continue; 
             }
         }
         out_details = "No valid " + expected.type + " received.";
-        log_detailed("FAIL", "WAIT", "No valid response received", out_details + " after " + to_string(tries) + " tries");
+        log_detailed("FAIL", "WAIT", "No valid response received", out_details + " after " + to_string(tries) + " tries", current_test_id);
         return false;
     }
 
     // --- Test Functions ---
     void test_parameter_request() {
+        current_test_id = "PR-01";
+        log_detailed("INFO", "TEST", "Starting ParameterRequest tests", "Testing various channel indices", current_test_id);
+        
         // Edge cases
         vector<int> indices = {0, 1, -1, -2, 999, -999};
         // Add all channel indices if available
@@ -559,11 +567,14 @@ public:
         indices.erase(unique(indices.begin(), indices.end()), indices.end());
         
         for (int idx : indices) {
+            current_test_id = "PR-" + string(idx < 0 ? "NEG" : "") + to_string(abs(idx));
+            log_detailed("INFO", "TEST", "Testing ParameterRequest", "channelIndex: " + to_string(idx), current_test_id);
+            
             json req = {
                 {"transmittingDevice", "TestMaster"},
                 {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", idx}}}}
             };
-            client.send(req.dump());
+            client.send(req.dump(), current_test_id);
             
             // Add small delay between different test cases to prevent overwhelming the network
             this_thread::sleep_for(chrono::milliseconds(50));
@@ -611,13 +622,16 @@ public:
             
             // If the test failed, flush the socket to ensure clean state
             if (!ok) {
-                log_detailed("INFO", "TEST", "ParameterRequest test failed, flushing socket", "channelIndex: " + to_string(idx));
-                client.flush_socket();
+                log_detailed("INFO", "TEST", "ParameterRequest test failed, flushing socket", "channelIndex: " + to_string(idx), current_test_id);
+                client.flush_socket(current_test_id);
             }
         }
     }
 
     void test_parameter_command() {
+        current_test_id = "PC-01";
+        log_detailed("INFO", "TEST", "Starting ParameterCommand tests", "Testing various command scenarios", current_test_id);
+        
         if (identity.channelIndices.empty()) {
             add_result("ParameterCommand test", false, "No channels available");
             return;
@@ -626,47 +640,53 @@ public:
         int test_channel = identity.channelIndices[0];
         
         // Valid command
+        current_test_id = "PC-02";
         json valid_cmd = {{"messageType", "ParameterCommand"}, {"channelIndex", test_channel}, {"gain", {{"value", 0}}}};
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {valid_cmd}}};
-        client.send(req.dump());
+        client.send(req.dump(), current_test_id);
         ExpectedResponse expected = {"StatusUpdate", [](const json& m){ return m.contains("channelIndex") && m.contains("gain"); }, "StatusUpdate after valid command"};
         string details;
         bool ok = wait_for_response(expected, details);
         add_result("ParameterCommand valid", ok, details);
 
         // Out of range (using extreme value)
+        current_test_id = "PC-03";
         json out_of_range = {{"messageType", "ParameterCommand"}, {"channelIndex", test_channel}, {"gain", {{"value", 999}}}};
         req = {{"transmittingDevice", "TestMaster"}, {"messages", {out_of_range}}};
-        client.send(req.dump());
-        expected = {"ErrorResponse", [](const json& m){ return m["errorValue"] == "ValueOutOfRange"; }, "ErrorResponse for out of range"};
+        client.send(req.dump(), current_test_id);
+        expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue") && m["errorValue"] == "ValueOutOfRange"; }, "ErrorResponse for out of range"};
         ok = wait_for_response(expected, details);
         add_result("ParameterCommand out_of_range", ok, details);
 
         // Invalid type
+        current_test_id = "PC-04";
         json invalid_type = {{"messageType", "ParameterCommand"}, {"channelIndex", test_channel}, {"gain", {{"value", "notanumber"}}}};
         req = {{"transmittingDevice", "TestMaster"}, {"messages", {invalid_type}}};
-        client.send(req.dump());
-        expected = {"ErrorResponse", [](const json& m){ return m["errorValue"] == "InvalidValueType"; }, "ErrorResponse for invalid type"};
+        client.send(req.dump(), current_test_id);
+        expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue") && m["errorValue"] == "InvalidValueType"; }, "ErrorResponse for invalid type"};
         ok = wait_for_response(expected, details);
         add_result("ParameterCommand invalid_type", ok, details);
 
         // Test invalid channel index
+        current_test_id = "PC-05";
         json invalid_channel = {{"messageType", "ParameterCommand"}, {"channelIndex", 999}, {"gain", {{"value", 0}}}};
         req = {{"transmittingDevice", "TestMaster"}, {"messages", {invalid_channel}}};
-        client.send(req.dump());
-        expected = {"ErrorResponse", [](const json& m){ return m["errorValue"] == "ChannelIndexInvalid"; }, "ErrorResponse for invalid channel"};
+        client.send(req.dump(), current_test_id);
+        expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue") && m["errorValue"] == "ChannelIndexInvalid"; }, "ErrorResponse for invalid channel"};
         ok = wait_for_response(expected, details);
         add_result("ParameterCommand invalid_channel", ok, details);
 
         // Test unsupported parameter
+        current_test_id = "PC-06";
         json unsupported_param = {{"messageType", "ParameterCommand"}, {"channelIndex", test_channel}, {"nonexistentParam", {{"value", 0}}}};
         req = {{"transmittingDevice", "TestMaster"}, {"messages", {unsupported_param}}};
-        client.send(req.dump());
-        expected = {"ErrorResponse", [](const json& m){ return m["errorValue"] == "ParameterUnsupported"; }, "ErrorResponse for unsupported parameter"};
+        client.send(req.dump(), current_test_id);
+        expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue") && m["errorValue"] == "ParameterUnsupported"; }, "ErrorResponse for unsupported parameter"};
         ok = wait_for_response(expected, details);
         add_result("ParameterCommand unsupported_param", ok, details);
 
         // Test multiple parameter changes in one command
+        current_test_id = "PC-07";
         json multi_param = {
             {"messageType", "ParameterCommand"}, 
             {"channelIndex", test_channel}, 
@@ -674,13 +694,16 @@ public:
             {"polarity", {{"value", false}}}
         };
         req = {{"transmittingDevice", "TestMaster"}, {"messages", {multi_param}}};
-        client.send(req.dump());
+        client.send(req.dump(), current_test_id);
         expected = {"StatusUpdate", [](const json& m){ return m.contains("channelIndex"); }, "StatusUpdate after multi-parameter command"};
         ok = wait_for_response(expected, details);
         add_result("ParameterCommand multi_parameter", ok, details);
     }
 
     void test_status_request() {
+        current_test_id = "SR-01";
+        log_detailed("INFO", "TEST", "Starting StatusRequest tests", "Testing various channel indices", current_test_id);
+        
         vector<int> indices = {-1, 999};
         
         // Add valid channel indices
@@ -691,13 +714,14 @@ public:
         }
         
         for (int idx : indices) {
-            log_detailed("INFO", "TEST", "Testing StatusRequest", "channelIndex: " + to_string(idx));
+            current_test_id = "SR-" + string(idx < 0 ? "NEG" : "") + to_string(abs(idx));
+            log_detailed("INFO", "TEST", "Testing StatusRequest", "channelIndex: " + to_string(idx), current_test_id);
             
             json req = {
                 {"transmittingDevice", "TestMaster"},
                 {"messages", {{{"messageType", "StatusRequest"}, {"channelIndex", idx}}}}
             };
-            client.send(req.dump());
+            client.send(req.dump(), current_test_id);
             
             // Add a small delay after sending to ensure it's transmitted
             this_thread::sleep_for(chrono::milliseconds(50));
@@ -713,13 +737,7 @@ public:
                 }, "StatusUpdate for all channels"};
             } else {
                 expected = {"ErrorResponse", [](const json& m){ 
-                    bool has_error_value = m.contains("errorValue");
-                    bool is_channel_invalid = false;
-                    if (has_error_value) {
-                        string error_val = m["errorValue"].get<string>();
-                        is_channel_invalid = (error_val == "ChannelIndexInvalid");
-                    }
-                    return has_error_value && is_channel_invalid;
+                    return m.contains("errorValue") && m["errorValue"] == "ChannelIndexInvalid";
                 }, "Error for invalid channelIndex"};
             }
             string details;
@@ -728,8 +746,8 @@ public:
             
             // If the test failed, flush the socket to ensure clean state
             if (!ok) {
-                log_detailed("INFO", "TEST", "Test failed, flushing socket", "channelIndex: " + to_string(idx));
-                client.flush_socket();
+                log_detailed("INFO", "TEST", "Test failed, flushing socket", "channelIndex: " + to_string(idx), current_test_id);
+                client.flush_socket(current_test_id);
             }
             
             // Add a small delay between different status requests to ensure socket stability
@@ -737,15 +755,16 @@ public:
         }
 
         // Test that StatusUpdate contains all current values for the channel
+        current_test_id = "SR-COMP";
         if (!identity.channelIndices.empty()) {
             int test_channel = identity.channelIndices[0];
             json req = {
                 {"transmittingDevice", "TestMaster"},
                 {"messages", {{{"messageType", "StatusRequest"}, {"channelIndex", test_channel}}}}
             };
-            client.send(req.dump());
+            client.send(req.dump(), current_test_id);
             
-            string resp = client.recv();
+            string resp = client.recv(current_test_id);
             if (!resp.empty()) {
                 try {
                     auto j = json::parse(resp);
@@ -767,55 +786,64 @@ public:
     }
 
     void test_error_cases() {
+        current_test_id = "ER-01";
+        log_detailed("INFO", "TEST", "Starting error case tests", "Testing various error conditions", current_test_id);
+        
         // Test all specific error types
-        vector<pair<string, string>> error_tests = {
-            {"UnrecognizedCommand", "NotAType"},
-            {"ChannelIndexInvalid", "999"},
-            {"MalformedMessage", ""},
-            {"ParameterUnsupported", ""},
-            {"InvalidValueType", "string_instead_of_number"}
-        };
 
         // Malformed message (missing transmittingDevice)
+        current_test_id = "ER-02";
         json malformed = {{"messages", {}}};
-        client.send(malformed.dump());
+        client.send(malformed.dump(), current_test_id);
         ExpectedResponse expected = {"ErrorResponse", [](const json& m){ 
-            return m.contains("errorValue") && m.contains("errorString") && m["errorString"].is_string(); 
+            return m.contains("errorValue") && m.contains("errorString") && m["errorString"].is_string() &&
+                   m["errorValue"] == "MalformedMessage"; 
         }, "Error for malformed message"};
         string details;
         bool ok = wait_for_response(expected, details);
         add_result("Malformed message (missing transmittingDevice)", ok, details);
 
         // Empty messages array
+        current_test_id = "ER-03";
         json empty_msgs = {{"transmittingDevice", "TestMaster"}, {"messages", {}}};
-        client.send(empty_msgs.dump());
+        client.send(empty_msgs.dump(), current_test_id);
+        expected = {"ErrorResponse", [](const json& m){ 
+            return m.contains("errorValue") && m["errorValue"] == "MalformedMessage"; 
+        }, "Error for empty messages array"};
         ok = wait_for_response(expected, details);
         add_result("Empty messages array", ok, details);
 
         // Unsupported messageType
+        current_test_id = "ER-04";
         json unsupported = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "NotAType"}}}}};
-        client.send(unsupported.dump());
-        expected = {"ErrorResponse", [](const json& m){ return m["errorValue"] == "UnrecognizedCommand"; }, "ErrorResponse for unsupported messageType"};
+        client.send(unsupported.dump(), current_test_id);
+        expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue") && m["errorValue"] == "UnrecognizedCommand"; }, "ErrorResponse for unsupported messageType"};
         ok = wait_for_response(expected, details);
         add_result("Unsupported messageType", ok, details);
 
         // Test invalid JSON structure
-        client.send("{\"incomplete\":}");
-        expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue"); }, "Error for invalid JSON"};
+        current_test_id = "ER-05";
+        client.send("{\"incomplete\":}", current_test_id);
+        expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue") && m["errorValue"] == "MalformedMessage"; }, "Error for invalid JSON"};
         ok = wait_for_response(expected, details);
         add_result("Invalid JSON structure", ok, details);
 
         // Test missing channelIndex
+        current_test_id = "ER-06";
         json missing_channel = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterCommand"}, {"gain", {{"value", 0}}}}}}};
-        client.send(missing_channel.dump());
+        client.send(missing_channel.dump(), current_test_id);
+        expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue") && m["errorValue"] == "MalformedMessage"; }, "Error for missing channelIndex"};
         ok = wait_for_response(expected, details);
         add_result("Missing channelIndex", ok, details);
     }
 
     void test_device_level() {
+        current_test_id = "DL-01";
+        log_detailed("INFO", "TEST", "Starting device level tests", "Testing device-level parameter requests", current_test_id);
+        
         // Device-level info
         json req = {{"transmittingDevice", "TestMaster"}, {"messages", {{{"messageType", "ParameterRequest"}, {"channelIndex", -1}}}}};
-        client.send(req.dump());
+        client.send(req.dump(), current_test_id);
         ExpectedResponse expected = {"ParameterResponse", [](const json& m){ return m.contains("model") && m.contains("deviceType") && m.contains("channelIndices"); }, "Device-level ParameterResponse"};
         string details;
         bool ok = wait_for_response(expected, details);
@@ -1181,7 +1209,7 @@ public:
                                 client.send(req.dump());
                                 
                                 ExpectedResponse expected = {"ErrorResponse", [](const json& m){ 
-                                    return m["errorValue"] == "Parameterlocked" || m["errorValue"] == "UnableToChangeValue"; 
+                                    return m.contains("errorValue") && (m["errorValue"] == "ParameterLocked" || m["errorValue"] == "UnableToChangeValue"); 
                                 }, "Error for locked parameter change"};
                                 string details;
                                 bool ok = wait_for_response(expected, details);
@@ -1235,7 +1263,7 @@ public:
                             client.send(req.dump());
                             
                             ExpectedResponse expected = {"ErrorResponse", [](const json& m){ 
-                                return m["errorValue"] == "ValueOutOfRange" || m["errorValue"] == "InvalidValueType"; 
+                                return m.contains("errorValue") && (m["errorValue"] == "ValueOutOfRange" || m["errorValue"] == "InvalidValueType"); 
                             }, "Error for precision violation"};
                             string details;
                             bool ok = wait_for_response(expected, details);
@@ -1279,7 +1307,7 @@ public:
                             client.send(req.dump());
                             
                             ExpectedResponse expected = {"ErrorResponse", [](const json& m){ 
-                                return m["errorValue"] == "InvalidValueType" || m["errorValue"] == "ValueOutOfRange"; 
+                                return m.contains("errorValue") && (m["errorValue"] == "InvalidValueType" || m["errorValue"] == "ValueOutOfRange"); 
                             }, "Error for invalid enum value"};
                             string details;
                             bool ok = wait_for_response(expected, details);
@@ -1328,7 +1356,7 @@ public:
         json no_device = {{"messages", {{{"messageType", "StatusRequest"}, {"channelIndex", 0}}}}};
         client.send(no_device.dump());
         
-        ExpectedResponse expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue"); }, "Error for missing transmittingDevice"};
+        ExpectedResponse expected = {"ErrorResponse", [](const json& m){ return m.contains("errorValue") && m["errorValue"] == "MalformedMessage"; }, "Error for missing transmittingDevice"};
         string details;
         bool ok = wait_for_response(expected, details);
         add_result("Missing transmittingDevice", ok, details);
