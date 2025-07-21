@@ -52,13 +52,13 @@ struct Preamp : public json {
     Preamp(int idx = 0) {
         (*this)["channelIndex"] = idx;
         (*this)["gain"] = {
-            {"dataType", "int"}, {"unit", "dB"}, {"precision", 1}, {"value", 0}, {"minValue", -5}, {"maxValue", 50}, {"locked", false}
+            {"dataType", "number"}, {"unit", "dB"}, {"precision", 1}, {"value", 0}, {"minValue", -5}, {"maxValue", 50}, {"locked", false}
         };
         (*this)["pad"] = {
             {"dataType", "bool"}, {"value", false}, {"padLevel", -10}, {"locked", false}
         };
         (*this)["lowcut"] = {
-            {"dataType", "int"}, {"unit", "Hz"}, {"precision", 1}, {"value", 0}, {"minValue", 0}, {"maxValue", 100}, {"locked", false}
+            {"dataType", "number"}, {"unit", "Hz"}, {"precision", 1}, {"value", 0}, {"minValue", 0}, {"maxValue", 100}, {"locked", false}
         };
         (*this)["lowcutEnable"] = {
             {"dataType", "bool"}, {"value", false}, {"locked", false}
@@ -79,19 +79,19 @@ struct Preamp : public json {
             {"dataType", "bool"}, {"value", true}, {"locked", true}
         };
         (*this)["squelch"] = {
-            {"dataType", "int"}, {"unit", "dB"}, {"precision", 1}, {"value", -60}, {"minValue", -80}, {"maxValue", -20}, {"locked", false}
+            {"dataType", "number"}, {"unit", "dB"}, {"precision", 1}, {"value", -60}, {"minValue", -80}, {"maxValue", -20}, {"locked", false}
         };
         (*this)["subDevice"] = {
             {"dataType", "string"}, {"value", "handheld"}, {"locked", true}
         };
         (*this)["audioLevel"] = {
-            {"dataType", "float"}, {"unit", "dB"}, {"precision", 0.1}, {"value", -20.5}, {"locked", true}
+            {"dataType", "number"}, {"unit", "dB"}, {"precision", 0.1}, {"value", -20.5}, {"locked", true}
         };
         (*this)["rfLevel"] = {
-            {"dataType", "float"}, {"unit", "dB"}, {"precision", 0.1}, {"value", -45.2}, {"locked", true}
+            {"dataType", "number"}, {"unit", "dB"}, {"precision", 0.1}, {"value", -45.2}, {"locked", true}
         };
         (*this)["batteryLevel"] = {
-            {"dataType", "int"}, {"unit", "%"}, {"precision", 1}, {"value", 85}, {"minValue", 0}, {"maxValue", 100}, {"locked", true}
+            {"dataType", "number"}, {"unit", "%"}, {"precision", 1}, {"value", 85}, {"minValue", 0}, {"maxValue", 100}, {"locked", true}
         };
     }
     int index() const { return (*this)["channelIndex"]; }

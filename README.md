@@ -1,72 +1,97 @@
-# Protocol Overview
-Virgil is composed of 5 types of communication. All will be formatted as JSON files.
-Virgil will also use mDNS to find other virgil devices.  
-The Virgil port is 7889.
+# Virgil Protocol 1.0.0
 
+Virgil is a network protocol for controlling audio devices using JSON-formatted messages over UDP. It uses mDNS for device discovery and supports real-time parameter control and status monitoring.
 
+**This is virgil protocol 1.0.0**
 
-# mDNS
-The service type is "_virgil._udp.local."
-The service name is "{dante name}.{service type}"
-The service port is 7889.
+## Overview
 
-
-**Masters must always be actively searching for mDNS advertisements, not just at startup.** This ensures that if a device (slave) boots up after the master, it can still be discovered and added to the system automatically. Masters should continuously listen for new mDNS packets and update their device list as new slaves appear or disappear from the network.
-
-
-Before advertising over mDNS, all slave devices must first scan for Virgil devices and choose a unique multicast address.
-In the TXT record, there will be a multicast address without the last number, e.g., 244.1.1.  
-This is used to ensure multicast IDs are unique to each slave device. There is no specified way to determine the multicast ID; you can use the lowest available number, a random link-local approach, or another method. 
-There will also be a variable called "function" that will be either "master", "slave", or "both".  
-There will also be variables called "model" and "deviceType". More information on these can be found in the parameter section.  
-This is currently unused but may be displayed in debug software.
-Both masters and slaves should always be advertising mDNS.
-
-
-# Virgil Protocol Overview
-Virgil uses JSON-formatted messages and mDNS for device discovery. The default port is **7889**.
-
-## mDNS Discovery
-- **Service Type:** `_virgil._udp.local.`
-- **Service Name:** `{dante name}._virgil._udp.local.`
-- **Service Port:** 7889
-- **Masters:** Must continuously listen for mDNS advertisements to discover new slaves at any time.
-- **Slaves:** Before advertising, scan for existing Virgil devices and select a unique multicast address (e.g., `244.1.1`). The method for choosing the last number is flexible (lowest unused, random, etc.).
-- **TXT Record Fields:**
-  - `multicastAddress` (e.g., `244.1.1`)
-  - `function`: `master`, `slave`, or `both`
-  - `model`, `deviceType`: See parameter section below
-- **Advertising:** Both masters and slaves should always advertise via mDNS.
++ **unit**: dBFS
++ **dataType**: number
++ **locked**: Always true (read-only)
+- **Message Types**: 6 types of communication (see Message Types section)
 
 ---
-## Parameters
-Virgil supports the following parameters. Only `gain` is mandatory. This is so that, even with devices with fixed gain, the master can still see the fixed gain value.  
-If a feature is disabled, include its parameter with `locked: true`.  
-Only the `value` field is changeable by masters; all other fields are informational.  
-If the way something is formatted make zero sense, its to make it easier to have a little icon on the gui
-
-**Parameter Field Format:**
-- `name` (string): Parameter name in JSON messages
-- `description` (string): What the parameter controls
-- `unit` (string, optional): unit of measurement
-- `dataType` (string): Data type (`int`, `float`, `bool`, `string`, `enum`)
-- `minValue` (int/float, optional): The minimum value of the parameter
-- `maxValue` (int/float, optional): The maximum value of the parameter
-- `precision` (number, optional): Step size. If not included, assume to be 1
-- `locked` (bool): If true, parameter cannot be changed
-
-
-**Notes**
-- For precision ≠ 1, values start from minValue (e.g., precision 3dB, minValue -5dB: options are -5, -2, 1, 4, ...).
-- The data type `enum` is not a usual enum. It is instead represented as an array of strings. All the strings in the array are valid values. The values can be found in the `enumValues` field.
-- Percent is a unit, not a dataType. If the unit is `%` then the `minValue` should be `0`, the `maxValue` should be `100`, the `precision` should be `1`, and the `dataType` should be `int`
-
++ **unit**: dB or %
++ **dataType**: number
++ **locked**: Always true (read-only)
+### Service Configuration
+- **Service Type**: `_virgil._udp.local.`
+- **Service Name**: `{dante name}._virgil._udp.local.`
++ **unit**: %
++ **dataType**: number
++ **locked**: Always true (read-only)
+- `multicastAddress`: Unique multicast address prefix (e.g., `244.1.1`)
+- `function`: Device role (`master`, `slave`, or `both`)
 ```jsonc
 {
-  // Example transmitPower parameter as enum
+  "transmittingDevice": "SlaveDanteDeviceName",
+  "messages": [
+    {
+      "messageType": "StatusUpdate",
+      "channelIndex": 0,
+      "audioLevel": { "dataType": "number", "value": -12 },
+      "rfLevel": { "dataType": "number", "value": 85 },
+      "batteryLevel": { "dataType": "number", "value": 67 }
+    }
+  ]
+}
+```
+- `transmittingDevice`: Dante name of the sending device
+- `messages`: Array of message objects
+
+---
+
+## Message Types
+
+| Type               | Description                                    | Direction             | Protocol   |
+|--------------------|------------------------------------------------|-----------------------|------------|
+| ParameterCommand   | Set/change a parameter on a device/channel    | Master → Slave        | UDP        |
+| StatusRequest      | Request current status of channels            | Master → Slave        | UDP        |
+| StatusUpdate       | Notify parameter/device state change          | Slave → Masters (all) | Multicast  |
+| ParameterRequest   | Request device/channel parameter capabilities | Master → Slave        | UDP        |
+| ParameterResponse  | Reply with parameter capabilities             | Slave → Master        | UDP        |
+| ErrorResponse      | Indicate request error with details           | Slave → Master        | UDP        |
+
+### Message Usage
+- **ParameterCommand**: Change gain, pad, phantom power, etc.
+- **StatusRequest**: Poll current channel/device state
+- **StatusUpdate**: Automatic notifications when parameters change (sent by slaves)
+- **ParameterRequest**: Discover what parameters a device supports
+- **ParameterResponse**: Reply to parameter capability requests
+- **ErrorResponse**: Report invalid commands, out-of-range values, etc.
+
+---
+
+## Parameters
+
+Virgil supports various audio parameters. Only `gain` is mandatory for all devices to ensure masters can always read the gain value, even on fixed-gain devices.
+
+### Parameter Structure
+
+Each parameter is a JSON object with the following fields:
+
+- `value`: Current parameter value (only field changeable by masters)
+- `dataType`: Data type (`number`, `bool`, `string`, `enum`)
+- `unit` (Required for number): Unit of measurement (e.g., `dB`, `Hz`, `%`)
+- `minValue` (Required for number): Minimum allowed value
+- `maxValue` (Required for number): Maximum allowed value  
+- `precision` (Required for number): Step size
+- `locked`: If true, parameter cannot be changed
+- `enumValues` (enum only): Array of valid string values
+
+### Data Type Notes
+
+- **Enum**: Represented as an array of valid string values in `enumValues`
+- **Percentage**: Use `%` as unit with `minValue: 0`, `maxValue: 100`, `dataType: "number"`, and `precision : 1`
+- **Precision**: Values increment from `minValue` by `precision` steps (e.g., precision 3dB, minValue -5dB = -5, -2, 1, 4...)
+
+### Example: Enum Parameter
+```jsonc
+{
   "transmitPower": {
-    "value": "low",        // Current value
-    "enumValues": ["low", "medium", "high"], // Valid values
+    "value": "low",
+    "enumValues": ["low", "medium", "high"],
     "dataType": "enum",
     "locked": false
   }
@@ -75,105 +100,302 @@ If the way something is formatted make zero sense, its to make it easier to have
 
 
 ---
-### Supported Parameters
 
-#### gain
-- Analog gain of the channel (ignores pad)
-- **unit:** dB
-- **dataType:** int or float
-- **minValue:** Device-specific minimum gain
-- **maxValue:** Device-specific maximum gain
-- **precision:** Step size in dB
-- **locked:** true if gain is fixed or disabled
-- **Notes:** Gain is independent of pad. 
+## Supported Parameters
+
+### Control Parameters
+
+#### gain (Required)
+Analog gain of the channel (independent of pad)
+- **unit**: dB
+- **dataType**: number
+- **minValue**: Device-specific minimum gain
+- **maxValue**: Device-specific maximum gain
+- **locked**: true if gain is fixed or disabled
+
+Example:
+```jsonc
+"gain" : {
+  "unit" : "dB",
+  "dataType" : "number",
+  "minValue" : -10,
+  "maxValue" : 50,
+  "value" : 10,
+  "precision" : 1, // Can be higher or lower, depending on your device's precision. For example, 0.1
+  "locked" : false 
+}
+```  
+
+Alternative example with fixed gain
+
+```jsonc
+"gain" : {
+  "unit" : "dB",
+  "dataType" : "number",
+  "minValue" : 30,
+  "maxValue" : 30,
+  "precision" : 1,
+  "value" : 30,
+  "locked" : true
+}
+``` 
 
 #### pad
-- Optional input attenuator
-- **unit:** dB (for `padLevel`)
-- **dataType:** bool (`true` -> on, `false` -> off)
-- **padLevel:** Attenuation when enabled (usually negative)
-- **locked:** true if pad cannot be changed
+Input attenuator control
+- **dataType**: bool (true = enabled, false = disabled)
+- **Additional**: `padLevel` field specifies attenuation amount in dB (usually negative)
+- **locked**: true if pad cannot be changed
+
+Example:
+```jsonc
+"pad" : {
+  "dataType" : "bool",
+  "value" : false,
+  "locked" : false,
+  "padLevel" : -10 //This means that enableing the pad drops the input by 10dB
+}
+``` 
 
 #### lowcut
-- High-pass filter control
-- **unit:** Hz
-- **dataType:** int
-- **minValue:** Device-specific minimum frequency
-- **maxValue:** Device-specific maximum frequency
-- **precision:** Step size in Hz
-- **locked:** true if lowcut cannot be changed
+High-pass filter frequency
+- **unit**: hz
+- **dataType**: number
+- **minValue**: Device-specific minimum frequency
+- **maxValue**: Device-specific maximum frequency
+- **precision**: Precision of the frequency selection 
+- **locked**: true if filter cannot be changed
+- **Notes**: Only include this is your device has a physical lowcut circuit. Do not include this if it's a dsp lowcut
+
+Example:
+```jsonc
+"lowcut" : {
+  "dataType" : "number",
+  "unit" : "hz",
+  "minValue" : 0,
+  "maxValue" : 150,
+  "precison" : 1,
+  "value" : 100,
+  "locked" : false,
+}
+``` 
 
 #### lowcutEnable
-- Enables/disabled the low cut
-- **dataType:** bool (`true` -> enabled, `false` -> disabled)
-- **locked:** true if lowcut enable cannot be changed
+Enable/disable high-pass filter
+- **dataType**: bool (true = enabled, false = disabled)
+- **locked**: true if control cannot be changed
+- **Notes**: If your device has lowcut, it must also have lowcutEnable
+
+Example:
+```jsonc
+"lowcutEnable" : {
+  "dataType" : "bool",
+  "value" : true,
+  "locked" : false,
+}
+``` 
 
 #### polarity
-- Signal polarity (phase invert)
-- **dataType:** bool (true = inverted, false = normal)
-- **locked:** true if polarity cannot be changed
+Signal polarity (phase invert)
+- **dataType**: bool (true = inverted, false = normal)
+- **locked**: true if polarity cannot be changed
+
+Example:
+```jsonc
+"polarity" : {
+  "dataType" : "bool",
+  "value" : true,
+  "locked" : false,
+}
+``` 
 
 #### phantomPower
-- Enables/disables phantom power
-- **dataType:** bool
-- **locked:** true if phantom power cannot be changed
+Phantom power control
+- **dataType**: bool (true = enabled, false = disabled)
+- **locked**: true if phantom power cannot be changed
+
+Example:
+```jsonc
+"phantomPower" : {
+  "dataType" : "bool",
+  "value" : false,
+  "locked" : false,
+}
+``` 
 
 #### rfEnable
-- Enables/disables RF transmitter/reciver
-- **dataType:** bool
-- **locked:** true if RF enable cannot be changed
+RF transmitter/receiver control
+- **dataType**: bool (true = enabled, false = disabled)
+- **locked**: true if RF cannot be changed
+
+Example:
+```jsonc
+"rfEnable" : {
+  "dataType" : "bool",
+  "value" : true,
+  "locked" : false,
+}
+``` 
 
 #### transmitPower
-- Sets the transmit power for a connected transmitter (Usually IEM)
-- **dataType:** enum
-- **locked:** true if transmit power cannot be changed
+Transmitter power level (typically for IEM systems)
+- **dataType**: enum/number
+- **unit**: % (only include if dataType is number)
+- **locked**: true if transmit power cannot be changed
 
-#### transmitterConnected
-- Shows if a wireless transmitter has been found and is connected
-- **dataType:** bool
-- **locked:** Always True
+Example:
+```jsonc
+"transmitPower" : {
+  "dataType" : "enum",
+  "enumValues" : ["low", "medium", "high"],
+  "value" : true,
+  "locked" : false,
+}
+``` 
+
+Example with percentage:
+```jsonc
+"transmitPower" : {
+  "dataType" : "number",
+  "unit" : "%",
+  "minValue": 0,
+  "maxValue": 100,
+  "precision": 1,
+  "value" : 100,
+  "locked" : false,
+}
+``` 
 
 #### squelch
-- Allows for squelch level to be set (threshold below which audio/RF is muted)
-- **unit:** dB or % (depends on device; dB for RF level threshold, % for normalized)
-- **dataType:** int or float
-- **minValue:** Device-specific minimum threshold
-- **maxValue:** Device-specific maximum threshold
-- **locked:** true if squelch cannot be changed
+Squelch threshold (mutes audio/RF below threshold)
+- **unit**: dB or % (device-dependent)
+- **dataType**: number
+- **minValue**: Device-specific minimum threshold
+- **maxValue**: Device-specific maximum threshold
+- **locked**: true if squelch cannot be changed
+
+Example:
+```jsonc
+"squelch" : {
+  "dataType" : "number",
+  "unit" : "dB",
+  "minValue": 30, //I'm sorry, I have no clue what the range would be
+  "maxValue": 50,
+  "precision": 1,
+  "value" : 40,
+  "locked" : false,
+}
+``` 
+
+Example with percentage:
+```jsonc
+"squelch" : {
+  "dataType" : "number",
+  "unit" : "%",
+  "minValue": 0,
+  "maxValue": 100,
+  "precision": 1,
+  "value" : 100,
+  "locked" : false,
+}
+``` 
+
+### Status Parameters (Read-Only)
+
+#### transmitterConnected
+Wireless transmitter connection status
+- **dataType**: bool
+- **locked**: Always true (read-only)
+
+Example:
+```jsonc
+"transmitterConnected" : {
+  "dataType" : "bool",
+  "value" : false,
+  "locked" : true,
+}
+``` 
 
 #### subDevice
-- Says what type of device is connected to this channel. Primarily used for wireless recivers
-- **dataType:** string
-- **locked** Always True
-- **Notes:** This string has predefined values. They are `handheld`, `beltpack`, `gooseneck`, `iem`, `xlr`, `trs`, `disconnected` and `other`.
+Type of device connected to this channel
+- **dataType**: string
+- **locked**: Always true (read-only)
+- **Valid Values**: `handheld`, `beltpack`, `gooseneck`, `iem`, `xlr`, `trs`, `disconnected`, `other`
+
+Example:
+```jsonc
+"subDevice" : {
+  "dataType" : "string",
+  "value" : "handheld",
+  "locked" : true,
+}
+``` 
+
+### Continuous Parameters (Real-Time Monitoring)
+
+These parameters change frequently and require status updates every 500ms:
 
 #### audioLevel
-- Shows the level of the audio for that channel
-- **unit:** dBFS
-- **dataType:** int (signed)
-- **locked:** Always True
-- **Notes:** This is a continuous parameter. See below for more information
+Audio signal level
+- **unit**: dBFS
+- **dataType**: number
+- **locked**: Always true (read-only)
+- **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
+
+Example:
+```jsonc
+"audioLevel" : {
+  "dataType" : "number",
+  "unit" : "dBFS",
+  "value" : -18,
+  "locked" : true,
+}
+``` 
 
 #### rfLevel
-- Shows the level of RF the reciver is reciving
-- **unit:** dB or %
-- **dataType:** int (signed)
-- **locked:** Always True
-- **Notes:** This is a continuous parameter. See below for more information
+RF signal strength
+- **unit**: dB or %
+- **dataType**: number
+- **locked**: Always true (read-only)
+- **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
+
+Example:
+```jsonc
+"rfLevel" : {
+  "dataType" : "number",
+  "unit" : "dB",
+  "value" : 40,
+  "locked" : true,
+}
+``` 
+
+Example with percentage:
+```jsonc
+"rfLevel" : {
+  "dataType" : "number",
+  "unit" : "%",
+  "value" : 100,
+  "locked" : true,
+}
+``` 
 
 #### batteryLevel
-- Shows the battery level of the connected device
-- **unit:** %
-- **dataType:** int
-- **locked:** Always True
-- **Notes:** This is a continuous parameter. See below for more information
+Connected device battery level
+- **unit**: %
+- **dataType**: number
+- **locked**: Always true (read-only)
+- **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
 
+Example:
+```jsonc
+"batteryLevel" : {
+  "dataType" : "number",
+  "unit" : "%",
+  "value" : 40,
+  "locked" : true,
+}
+``` 
 
-### Continuous Parameters
-A continuous parameter is a parameter whose value changes often and must be broadcasted frequently. For a continuous parameter, a status update must be sent every half second, reporting the current value of that parameter.  
-These will be normal status updates, and can even be combined.  
-This is an example of what a status update for every continuous parameter might look like
-
+### Continuous Parameter Status Update Example
 ```jsonc
 {
   "transmittingDevice": "SlaveDanteDeviceName",
@@ -181,15 +403,9 @@ This is an example of what a status update for every continuous parameter might 
     {
       "messageType": "StatusUpdate",
       "channelIndex": 0,
-      "audioLevel": {
-        "value": -12,      // Current audio level in dBFS
-      },
-      "rfLevel": {
-        "value": 85,       // Current RF level in %
-      },
-      "batteryLevel": {
-        "value": 67,       // Battery level in %
-      }
+      "audioLevel": { "value": -12 },
+      "rfLevel": { "value": 85 },
+      "batteryLevel": { "value": 67 }
     }
   ]
 }
@@ -197,96 +413,105 @@ This is an example of what a status update for every continuous parameter might 
 
 
 ---
-## Device-Level Parameters
-Present only in device-level responses (`channelIndex: -1`):
 
-- **model**: Model name (string, locked)
-- **deviceType**: Device type (string, locked. Valid values are: `digitalStageBox`, `wirelessReceiver`,`wirelessTransmitter`, `wirelessCombo`, `mixer`, `dsp`, and `computer`)
-- **virgilVersion**: The version of the virgil protocol that the device is running
-- **channelIndices**: An array of the available channels.
+## Device Information
 
+### Device Types
+Valid values for the `deviceType` parameter:
+- `digitalStageBox`
+- `wirelessReceiver`
+- `wirelessTransmitter`
+- `wirelessCombo`
+- `mixer`
+- `dsp`
+- `computer`
 
-### Channel Indices Information
-The channel indices parameter is a list of the indices of the available channels. For most devices, it will just be a range; e.g., 8 channels would be `[0,1,2,3,4,5,6,7]`.  
-However, it is possible for a channel to not be tied to a preamp (for example, a mixer), in which case it would not have any properties to control. If there were 8 channels, but channel 5 was tied to an aux instead of a preamp, the array would be `[0,1,2,3,4,6,7]`.
+### Device-Level Parameters
+These parameters are only present in device-level responses (`channelIndex: -1`):
 
+- **model**: Device model name (string, read-only)
+- **deviceType**: Device category (string, read-only)
+- **virgilVersion**: Protocol version being used (string, read-only)
+- **channelIndices**: Array of available channel indices (array, read-only)
 
----
-## Message Formatting
-All messages are JSON objects with these top-level fields:
-- `transmittingDevice`: Dante name of sender
-- `messages`: Array of message objects
+### Channel Indices
+The `channelIndices` array lists all controllable channels. Most devices use sequential numbering (e.g., `[0,1,2,3,4,5,6,7]` for 8 channels).
 
----
-## Message Types
-| Type               | Description                                                        | Direction             | Protocol   |
-|--------------------|--------------------------------------------------------------------|-----------------------|------------|
-| ParameterCommand   | Set/change a parameter on a device/channel                        | Master → Slave        | UDP        |
-| StatusRequest      | Request current status of channels                                | Master → Slave        | UDP        |
-| StatusUpdate       | Notify parameter/device state change                              | Slave → Masters (all) | Multicast  |
-| ParameterRequest   | Request device/channel parameter info/capabilities                | Master → Slave        | UDP        |
-| ParameterResponse  | Reply with parameter info/capabilities                            | Slave → Master        | UDP        |
-| ErrorResponse      | Indicate request error, with details                              | Slave → Master        | UDP        |
+However, some channels may not be controllable (e.g., auxiliary inputs on mixers). If channel 5 of an 8-channel device is not controllable, the array would be `[0,1,2,3,4,6,7]`.
 
 ---
-## Usage Examples
-- Use `ParameterCommand` to change gain, pad, etc.
-- Use `StatusRequest` to poll channel/device state.
-- Use `StatusUpdate` to inform controllers of changes (sent automatically by slaves).
-- Use `ParameterRequest` to discover device capabilities.
-- Use `ParameterResponse` to reply to `ParameterRequest`.
-- Use `ErrorResponse` for errors (invalid command, out of range, etc.).
 
----
 ## Message Details
 
 ### ParameterCommand
-- Sent by master to slave to update parameters
-- Only includes updated values
-- Sent via UDP
+Sent by master to slave to update parameters.
+- **Protocol**: UDP
+- **Content**: Only includes parameters being changed
+- **Target**: Specific slave device
+
+### StatusRequest
+Sent by master to slave to request current status.
+- **Protocol**: UDP
+- **Content**: Channel indices to query
+- **Response**: StatusUpdate message
 
 ### StatusUpdate
-- Sent by slave to all masters when a channel property changes
-- Contains all values for the affected channel
-- Multicast (UDP)
+Sent by slave to all masters when parameters change.
+- **Protocol**: Multicast UDP
+- **Content**: All values for affected channels
+- **Trigger**: Automatic when parameters change, or every 500ms for continuous parameters
 
 ### ParameterRequest
-- Sent by master to slave to request parameter info
-- Can request all channels and device-level info
-- Sent via UDP
-- `channelIndex: -1` for device-level info; `0..N-1` for channels; `-2` for both
+Sent by master to slave to discover device capabilities.
+- **Protocol**: UDP
+- **Channel Index Values**:
+  - `-1`: Device-level information only
+  - `0` to `N-1`: Specific channel information
+  - `-2`: Both device and all channel information
+- **Response**: ParameterResponse message
 
 ### ParameterResponse
-- Sent by slave to master in response to `ParameterRequest`
-- Contains requested parameter info
-- Device-level: includes `model`, `deviceType`, `channelCount`
-- Channel-level: includes `channelIndex` and supported parameters
-- All supported parameters for each channel must be included
-- Use `locked` to indicate adjustability
+Sent by slave to master in response to ParameterRequest.
+- **Protocol**: UDP
+- **Content**: Complete parameter definitions for requested channels/device
+- **Requirements**: Must include all supported parameters with full metadata
 
 ### ErrorResponse
-- Sent when a command cannot be processed
-- Contains `errorValue` and `errorString`
-- Error types:
-  - UnrecognizedCommand
-  - ValueOutOfRange
-  - InvalidValueType
-  - UnableToChangeValue
-  - DeviceNotFound
-  - ChannelIndexInvalid
-  - ParameterLocked
-  - ParameterUnsupported
-  - MalformedMessage
-  - Busy
-  - Timeout
-  - PermissionDenied
-  - InternalError
-  - OutOfResources
-  - NetworkError
-  - Custom (use `Custom:Description` in `errorValue`)
-- `errorString` is user-friendly text
+Sent when a command cannot be processed.
+- **Protocol**: UDP
+- **Content**: Error code and human-readable description
+
+#### Error Types
+- `UnrecognizedCommand`: Unknown message type
+- `ValueOutOfRange`: Parameter value outside allowed range
+- `InvalidValueType`: Wrong data type for parameter
+- `UnableToChangeValue`: Parameter cannot be modified currently
+- `DeviceNotFound`: Target device not available
+- `ChannelIndexInvalid`: Channel does not exist
+- `ParameterLocked`: Parameter is read-only or disabled
+- `ParameterUnsupported`: Parameter not supported by device
+- `MalformedMessage`: Invalid JSON or message structure
+- `Busy`: Device cannot process request currently
+- `Timeout`: Request timed out
+- `PermissionDenied`: Insufficient privileges
+- `InternalError`: Device internal error
+- `OutOfResources`: Device resource exhaustion
+- `NetworkError`: Network communication problem
+- `Custom:Description`: Custom error (replace Description with specific details)
 
 ---
-## Additional Notes
-- For custom errors, document the type and provide a clear `errorString`.
-- See example JSON files for exact message structures.
+
+## Implementation Notes
+
+- **Error Handling**: Always provide clear, user-friendly error messages in `errorString`
+- **Parameter Discovery**: Masters should query device capabilities before attempting to control parameters
+- **Continuous Monitoring**: Implement 500ms update intervals for continuous parameters
+- **Network Resilience**: Handle device disconnections and reconnections gracefully
+- **Example Files**: Reference the `Example JSON/` directory for complete message examples
+
+---
+
+## See Also
+
+- Example JSON message files in the `Example JSON/` directory
+- Master and Slave example implementations in respective directories

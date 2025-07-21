@@ -24,7 +24,7 @@ It describes the capabilities and current state of a preamp, including supported
             "channelIndex" : 0,                    // The channel being described
             "gain" :
             {
-                "dataType" : "int",              // Data type (int/float)
+                "dataType" : "number",              // Data type
                 "unit" : "dB",                   // Unit of measurement
                 "precision" : 1,                   // Step size for gain
                 "value" : 1,                       // Current value
@@ -41,7 +41,7 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "lowcut":
             {
-                "dataType" : "int",               // Data type
+                "dataType" : "number",               // Data type
                 "unit" : "Hz",                    // Unit
                 "precision" : 1,                   // Step size
                 "value" : 0,                       // Current value
@@ -88,7 +88,7 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "squelch":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "%",
                 "value" : 60,
                 "minValue" : 0,
@@ -104,21 +104,21 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "audioLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "dBFS",
                 "value" : -30,
                 "locked" : true
             },
             "rfLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "dB",
                 "value" : -20,
                 "locked" : true
             },
             "batteryLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "%",
                 "value" : 100,
                 "minValue" : 0,
@@ -132,7 +132,7 @@ It describes the capabilities and current state of a preamp, including supported
             "channelIndex" : 1,                    // The channel being described
             "gain" :
             {
-                "dataType" : "int",              // Data type (int/float)
+                "dataType" : "number",              // Data type
                 "unit" : "dB",                   // Unit of measurement
                 "precision" : 1,                   // Step size for gain
                 "value" : 1,                       // Current value
@@ -149,7 +149,7 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "lowcut":
             {
-                "dataType" : "int",               // Data type
+                "dataType" : "number",               // Data type
                 "unit" : "Hz",                    // Unit
                 "precision" : 1,                   // Step size
                 "value" : 0,                       // Current value
@@ -196,7 +196,7 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "squelch":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "%",
                 "value" : 60,
                 "minValue" : 0,
@@ -212,21 +212,21 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "audioLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "dBFS",
                 "value" : -30,
                 "locked" : true
             },
             "rfLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "dB",
                 "value" : -20,
                 "locked" : true
             },
             "batteryLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "%",
                 "value" : 100,
                 "minValue" : 0,
@@ -240,7 +240,7 @@ It describes the capabilities and current state of a preamp, including supported
             "channelIndex" : 2,                    // The channel being described
             "gain" :
             {
-                "dataType" : "int",              // Data type (int/float)
+                "dataType" : "number",              // Data type
                 "unit" : "dB",                   // Unit of measurement
                 "precision" : 1,                   // Step size for gain
                 "value" : 1,                       // Current value
@@ -257,7 +257,7 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "lowcut":
             {
-                "dataType" : "int",               // Data type
+                "dataType" : "number",               // Data type
                 "unit" : "Hz",                    // Unit
                 "precision" : 1,                   // Step size
                 "value" : 0,                       // Current value
@@ -304,7 +304,7 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "squelch":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "%",
                 "value" : 60,
                 "minValue" : 0,
@@ -320,21 +320,21 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "audioLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "dBFS",
                 "value" : -30,
                 "locked" : true
             },
             "rfLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "dB",
                 "value" : -20,
                 "locked" : true
             },
             "batteryLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "%",
                 "value" : 100,
                 "minValue" : 0,
@@ -348,7 +348,7 @@ It describes the capabilities and current state of a preamp, including supported
             "channelIndex" : 4,                    // The channel being described
             "gain" :
             {
-                "dataType" : "int",              // Data type (int/float)
+                "dataType" : "number",              // Data type
                 "unit" : "dB",                   // Unit of measurement
                 "precision" : 1,                   // Step size for gain
                 "value" : 1,                       // Current value
@@ -365,7 +365,7 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "lowcut":
             {
-                "dataType" : "int",               // Data type
+                "dataType" : "number",               // Data type
                 "unit" : "Hz",                    // Unit
                 "precision" : 1,                   // Step size
                 "value" : 0,                       // Current value
@@ -412,7 +412,7 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "squelch":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "%",
                 "value" : 60,
                 "minValue" : 0,
@@ -428,21 +428,21 @@ It describes the capabilities and current state of a preamp, including supported
             },
             "audioLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "dBFS",
                 "value" : -30,
                 "locked" : true
             },
             "rfLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "dB",
                 "value" : -20,
                 "locked" : true
             },
             "batteryLevel":
             {
-                "dataType" : "int",
+                "dataType" : "number",
                 "unit" : "%",
                 "value" : 100,
                 "minValue" : 0,
