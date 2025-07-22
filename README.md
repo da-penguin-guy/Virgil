@@ -2,60 +2,31 @@
 
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over UDP. It uses mDNS for device discovery and supports real-time parameter control and status monitoring.
 
-**This is virgil protocol 1.0.0**
+**This is Virgil Protocol 1.0.0**
 
 ## Overview
 
-+ **unit**: dBFS
-+ **dataType**: number
-+ **locked**: Always true (read-only)
-- **Message Types**: 6 types of communication (see Message Types section)
-
----
-+ **unit**: dB or %
-+ **dataType**: number
-+ **locked**: Always true (read-only)
 ### Service Configuration
 - **Service Type**: `_virgil._udp.local.`
 - **Service Name**: `{dante name}._virgil._udp.local.`
-+ **unit**: %
-+ **dataType**: number
-+ **locked**: Always true (read-only)
-- `multicastAddress`: Unique multicast address prefix (e.g., `244.1.1`)
-- `function`: Device role (`master`, `slave`, or `both`)
-```jsonc
-{
-  "transmittingDevice": "SlaveDanteDeviceName",
-  "messages": [
-    {
-      "messageType": "StatusUpdate",
-      "channelIndex": 0,
-      "audioLevel": { "dataType": "number", "value": -12 },
-      "rfLevel": { "dataType": "number", "value": 85 },
-      "batteryLevel": { "dataType": "number", "value": 67 }
-    }
-  ]
-}
-```
-- `transmittingDevice`: Dante name of the sending device
-- `messages`: Array of message objects
-
+- **multicastAddress**: Unique multicast address prefix (e.g., `244.1.1`)
+- **function**: Device role (`master`, `slave`, or `both`)
 ---
 
 ## Message Types
 
 | Type               | Description                                    | Direction             | Protocol   |
 |--------------------|------------------------------------------------|-----------------------|------------|
-| ParameterCommand   | Set/change a parameter on a device/channel    | Master → Slave        | UDP        |
-| StatusRequest      | Request current status of channels            | Master → Slave        | UDP        |
-| StatusUpdate       | Notify parameter/device state change          | Slave → Masters (all) | Multicast  |
-| ParameterRequest   | Request device/channel parameter capabilities | Master → Slave        | UDP        |
-| ParameterResponse  | Reply with parameter capabilities             | Slave → Master        | UDP        |
-| ErrorResponse      | Indicate request error with details           | Slave → Master        | UDP        |
+| ParameterCommand   | Set or change a parameter on a device/channel  | Master → Slave        | UDP        |
+| StatusRequest      | Request current status of channels              | Master → Slave        | UDP        |
+| StatusUpdate       | Notify parameter or device state change         | Slave → Masters (all) | Multicast  |
+| ParameterRequest   | Request device or channel parameter capabilities| Master → Slave        | UDP        |
+| ParameterResponse  | Reply with parameter capabilities               | Slave → Master        | UDP        |
+| ErrorResponse      | Indicate request error with details             | Slave → Master        | UDP        |
 
 ### Message Usage
 - **ParameterCommand**: Change gain, pad, phantom power, etc.
-- **StatusRequest**: Poll current channel/device state
+- **StatusRequest**: Poll current channel or device state
 - **StatusUpdate**: Automatic notifications when parameters change (sent by slaves)
 - **ParameterRequest**: Discover what parameters a device supports
 - **ParameterResponse**: Reply to parameter capability requests
