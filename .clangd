@@ -1,0 +1,2 @@
+CompileFlags:
+  Add: [-std=c++17, -IC:/vcpkg/installed/x64-windows/include]

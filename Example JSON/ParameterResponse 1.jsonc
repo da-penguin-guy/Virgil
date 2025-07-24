@@ -1,0 +1,123 @@
+/*
+Parameter Response Example
+------------------------------
+This message is sent from a slave device to a master device in response to a ParameterRequest.
+It describes the capabilities and current state of a preamp, including supported parameters, ranges, and lock status.
+- Use when: A master requests detailed information about a preamp's capabilities and current settings.
+- Protocol: udp
+This has every parameter. I can't think of a single reason one device would have all of these, but who cares. 
+*/
+{
+    "transmittingDevice": "SlaveDanteDeviceName", // The device sending the info
+    "messages" :
+    [
+        {
+            "messageType": "ParameterResponse",
+            "channelIndex" : 0,                    // The channel being described
+            "gain" :
+            {
+                "dataType" : "number",              // Data type
+                "unit" : "dB",                   // Unit of measurement
+                "precision" : 1,                   // Step size for gain
+                "value" : 1,                       // Current value
+                "minValue" : -5,                   // Minimum value
+                "maxValue" : 50,                   // Maximum value
+                "locked" : false                   // If true, parameter cannot be changed
+            },
+            "pad":
+            {
+                "dataType" : "bool",              // Data type
+                "value" : false,                   // Current value
+                "padLevel" : -10,                  // dB attenuation
+                "locked" : false                   // If true, cannot be changed
+            },
+            "lowcut":
+            {
+                "dataType" : "number",               // Data type
+                "unit" : "Hz",                    // Unit
+                "precision" : 1,                   // Step size
+                "value" : 0,                       // Current value
+                "minValue" : 0,                    // Minimum value
+                "maxValue" : 100,                  // Maximum value
+                "locked" : false                   // If true, cannot be changed
+            },
+            "lowcutEnable":
+            {
+                "dataType" : "bool",              // Data type
+                "value" : false,                   // Current value
+                "locked" : false                   // If true, cannot be changed
+            },
+            "polarity":
+            {
+                "dataType" : "bool",              // Data type
+                "value" : false,                   // Current value
+                "locked" : false                   // If true, cannot be changed
+            },
+            "phantomPower":
+            {
+                "dataType" : "bool",
+                "value" : false,
+                "locked" : false
+            },
+            "rfEnable":
+            {
+                "dataType" : "bool",
+                "value" : true,
+                "locked" : false
+            },
+            "transmitPower":
+            {
+                "dataType" : "enum",
+                "enumValues" : ["low", "medium", "high"],
+                "value" : "medium",
+                "locked" : true
+            },
+            "transmitterConnected":
+            {
+                "dataType" : "bool",
+                "value" : true,
+                "locked" : true
+            },
+            "squelch":
+            {
+                "dataType" : "number",
+                "unit" : "%",
+                "value" : 60,
+                "minValue" : 0,
+                "maxValue" : 100,
+                "precision" : 1,
+                "locked" : false
+            },
+            "subDevice":
+            {
+                "dataType" : "string",
+                "value" : "handheld",   
+                "locked" : true           
+            },
+            "audioLevel":
+            {
+                "dataType" : "number",
+                "unit" : "dBFS",
+                "value" : -30,
+                "locked" : true
+            },
+            "rfLevel":
+            {
+                "dataType" : "number",
+                "unit" : "dB",
+                "value" : -20,
+                "locked" : true
+            },
+            "batteryLevel":
+            {
+                "dataType" : "number",
+                "unit" : "%",
+                "value" : 100,
+                "minValue" : 0,
+                "maxValue" : 100,
+                "precision" : 1,
+                "locked" : true
+            }
+        }
+    ]
+}

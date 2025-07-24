@@ -1,0 +1,19 @@
+/*
+Error Response Example
+---------------------
+This message is sent from a slave device to a master device when a request cannot be processed.
+It provides an error type and a human-readable error string. Error messages are sent via UDP.
+- Use when: A request is invalid, out of range, or cannot be executed for any reason.
+- Protocol: udp
+*/
+{
+    "transmittingDevice": "SlaveDanteDeviceName", // The device reporting the error
+    "messages" :
+    [
+        {
+            "messageType" : "ErrorResponse",           // Indicates this is an error response
+            "errorValue" : "ValueOutOfRange",         // Error type (see Overview.md for all types)
+            "errorString" : "-67dB is out of the gain range of -5dB to 50dB" // Human-readable error
+        }
+    ]
+}

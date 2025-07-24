@@ -1,0 +1,90 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Slave Tester",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Slave_Tester/Slave.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Build Slave Tester",
+            "logging": {
+                "moduleLoad": false,
+                "trace": false
+            },
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug Slave Tester (Custom IP)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Slave_Tester/Slave.exe",
+            "args": ["${input:deviceIP}"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Build Slave Tester",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Debug Slave Tester (No Build)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/Slave_Tester/Slave.exe",
+            "args": ["${input:deviceIP}"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb.exe",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "console": "integratedTerminal"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "deviceIP",
+            "description": "Enter the IP address of the Virgil device to test",
+            "default": "192.168.1.100",
+            "type": "promptString"
+        }
+    ]
+}
