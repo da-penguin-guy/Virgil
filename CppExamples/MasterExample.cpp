@@ -174,11 +174,11 @@ int mdns_query_callback(int sock, const struct sockaddr* from, size_t addrlen,
                                 if (eq_pos != string::npos) {
                                     string key = txt_entry.substr(0, eq_pos);
                                     string value = txt_entry.substr(eq_pos + 1);
-                                    if (key == "multicast") {
+                                    if (key == "multicastAddress") {
                                         device["multicastAddress"] = value;
                                     } else if (key == "function") {
                                         device["function"] = value;
-                                        if (value == "slave") {
+                                        if (value == "slave" || value == "both") {
                                             device["virgil"] = true;
                                         }
                                     } else if (key == "model") {
@@ -225,14 +225,16 @@ void MDNSWorkerThread() {
     
     char buffer[2048];
     
-    // Prepare master advertisement if needed (masters can advertise too for discovery)
+    // Use correct model and deviceType for TXT records
+    std::string model = "VirgilMasterModel"; // Replace with actual model if available
+    std::string deviceType = "mixer"; // Use a valid deviceType from spec
     mdns_record_txt_t txt[3];
     txt[0].key = {"function", strlen("function")};
     txt[0].value = {function.c_str(), function.length()};
     txt[1].key = {"model", strlen("model")};
-    txt[1].value = {danteName.c_str(), danteName.length()};
+    txt[1].value = {model.c_str(), model.length()};
     txt[2].key = {"deviceType", strlen("deviceType")};
-    txt[2].value = {function.c_str(), function.length()};
+    txt[2].value = {deviceType.c_str(), deviceType.length()};
     
     mdns_record_t answer = {};
     answer.name = { (danteName + "._virgil._udp.local.").c_str(), (danteName + "._virgil._udp.local.").length() };
@@ -285,7 +287,9 @@ void MDNSWorkerThread() {
         if (now - lastCheck > offlineCheckInterval) {
             lock_guard<mutex> lock(danteLookup_mutex);
             int now_sec = (int)time(nullptr);
-            for (auto& [danteName, device] : danteLookup) {
+            for (auto it = danteLookup.begin(); it != danteLookup.end(); ++it) {
+                const std::string& danteName = it->first;
+                json& device = it->second;
                 if (device.value("isFound", false)) {
                     int ttl = device.value("mdnsTTL", 60);
                     int lastSeen = device.value("mdnsLastSeen", now_sec);
@@ -311,6 +315,7 @@ void StartMDNSWorker(const string& danteName, const string& function, const stri
     mdns_worker_running = true;
     mdns_worker_thread = thread(MDNSWorkerThread);
 }
+
 
 void StopMDNSWorker() {
     mdns_worker_running = false;
@@ -511,7 +516,12 @@ void ProcessPacket(const string& data, const sockaddr_in& src){
         }
         // Optionally handle errors, info, etc. here
         else if (messageType == "error") {
-            cerr << "Received error from device: " << txDevice << ": " << message.dump() << endl;
+            std::string errorCode = message.value("errorCode", "");
+            std::string errorString = message.value("errorString", "");
+            cerr << "Received error from device: " << txDevice;
+            if (!errorCode.empty()) cerr << " [" << errorCode << "]";
+            if (!errorString.empty()) cerr << ": " << errorString;
+            cerr << ": " << message.dump() << endl;
         }
     }
 }
@@ -521,6 +531,8 @@ void CleanupAndExit(int code) {
     {
         string danteName = mdns_worker_config.danteName;
         string function = mdns_worker_config.function;
+        std::string model = "VirgilMasterModel"; // Replace with actual model if available
+        std::string deviceType = "mixer"; // Use a valid deviceType from spec
         char buffer[2048];
         int sock = mdns_socket_open_ipv4(nullptr);
         if (sock >= 0) {
@@ -529,9 +541,9 @@ void CleanupAndExit(int code) {
             txt[0].key = {"function", strlen("function")};
             txt[0].value = {function.c_str(), function.length()};
             txt[1].key = {"model", strlen("model")};
-            txt[1].value = {danteName.c_str(), danteName.length()};
+            txt[1].value = {model.c_str(), model.length()};
             txt[2].key = {"deviceType", strlen("deviceType")};
-            txt[2].value = {function.c_str(), function.length()};
+            txt[2].value = {deviceType.c_str(), deviceType.length()};
             mdns_record_t answer = {};
             answer.name = { (danteName + "._virgil._udp.local.").c_str(), (danteName + "._virgil._udp.local.").length() };
             answer.type = MDNS_RECORDTYPE_TXT;

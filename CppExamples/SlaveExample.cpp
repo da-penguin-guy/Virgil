@@ -227,12 +227,16 @@ json MakeParameterResponse(int channelIndex) {
         dev["channelIndices"] = channelIndices;
         msg["messages"].push_back(dev);
         
-        for (const auto& [idx, p] : channels) {
+        for (map<int, channel>::const_iterator it = channels.begin(); it != channels.end(); ++it) {
+            int idx = it->first;
+            const channel& p = it->second;
             json channel_msg;
             channel_msg["messageType"] = "ParameterResponse";
             channel_msg["channelIndex"] = idx;
             // Copy all parameters except channelIndex to avoid duplication
-            for (auto& [key, value] : p.items()) {
+            for (json::const_iterator jt = p.begin(); jt != p.end(); ++jt) {
+                const std::string& key = jt.key();
+                const json& value = jt.value();
                 if (key != "channelIndex") {
                     channel_msg[key] = value;
                 }
@@ -245,7 +249,10 @@ json MakeParameterResponse(int channelIndex) {
         p_msg["messageType"] = "ParameterResponse";
         p_msg["channelIndex"] = channelIndex;
         // Copy all parameters except channelIndex to avoid duplication
-        for (auto& [key, value] : channels.at(channelIndex).items()) {
+        const channel& ch = channels.at(channelIndex);
+        for (json::const_iterator jt = ch.begin(); jt != ch.end(); ++jt) {
+            const std::string& key = jt.key();
+            const json& value = jt.value();
             if (key != "channelIndex") {
                 p_msg[key] = value;
             }
@@ -266,7 +273,8 @@ void MakeStatusUpdate(int channelIndex, const vector<string>& params){
     json statusUpdate = json();
     statusUpdate["messageType"] = "StatusUpdate";
     statusUpdate["channelIndex"] = channelIndex;
-    for (const auto& p : params) {
+    for (vector<string>::const_iterator it = params.begin(); it != params.end(); ++it) {
+        const std::string& p = *it;
         if (channels.at(channelIndex).contains(p)) {
             statusUpdate[p] = channels.at(channelIndex)[p]["value"];
         } else {
@@ -363,7 +371,9 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
             msg.erase("channelIndex");
             vector<json> errors = {};
             vector<string> changedParams = {};
-            for(const auto& [key, value] : msg.items()) {
+            for (json::const_iterator jt = msg.begin(); jt != msg.end(); ++jt) {
+                const std::string& key = jt.key();
+                const json& value = jt.value();
                 if(!channels[idx].contains(key)) {
                     // Update channel parameter
                     cerr << "Warning: Channel " << idx << " does not have parameter '" << key << "' defined." << endl;
@@ -412,8 +422,8 @@ void HandlePacket(const string& data, const sockaddr_in& src) {
                         continue;
                     }
                     bool found = false;
-                    for (const auto& v : channels[idx][key]["enumValues"]) {
-                        if (v == value) {
+                    for (json::const_iterator vt = channels[idx][key]["enumValues"].begin(); vt != channels[idx][key]["enumValues"].end(); ++vt) {
+                        if (*vt == value) {
                             found = true;
                             break;
                         }
@@ -509,9 +519,12 @@ int main() {
         // Periodically send status updates for continuous parameters
         auto now = chrono::steady_clock::now();
         if (chrono::duration_cast<chrono::milliseconds>(now - lastStatusUpdate).count() >= 500) {
-            for (const auto& [idx, ch] : channels) {
+            for (map<int, channel>::const_iterator it = channels.begin(); it != channels.end(); ++it) {
+                int idx = it->first;
+                const channel& ch = it->second;
                 vector<string> continuousParams;
-                for (auto& [key, value] : ch.items()) {
+                for (json::const_iterator jt = ch.begin(); jt != ch.end(); ++jt) {
+                    const std::string& key = jt.key();
                     if (key == "audioLevel" || key == "rfLevel" || key == "batteryLevel") {
                         continuousParams.push_back(key);
                     }
