@@ -1,3 +1,0 @@
-C:/Users/robot/OneDrive/Desktop/Virgil/Master_Example/build/CMakeFiles/Master.dir
-C:/Users/robot/OneDrive/Desktop/Virgil/Master_Example/build/CMakeFiles/ALL_BUILD.dir
-C:/Users/robot/OneDrive/Desktop/Virgil/Master_Example/build/CMakeFiles/ZERO_CHECK.dir

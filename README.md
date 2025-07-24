@@ -31,6 +31,8 @@ Virgil uses a typical mDNS configuration. It is advertsed over `224.0.0.251` at 
 }
 ```
 mDNS isn't actually json, but this is the best way I could represent it
+
+
 ---
 
 ## Message Types
