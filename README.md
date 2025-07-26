@@ -1,8 +1,50 @@
-# Virgil Protocol 1.0.0
+# Virgil Protocol 1.1.0
 
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over UDP. It uses mDNS for device discovery and supports real-time parameter control and status monitoring.
 
-**This is Virgil Protocol 1.0.0**
+**This is Virgil Protocol 1.1.0**
+
+The rest of this document used the terms "master" and "slave". Masters are typically devices that will be issuing commands, such a mixer. Slaves are typically devices that will be reciving commands, such as digital stageboxes or wireless recivers.
+Slaves are almost always dante transmitters, but some devices may not be. Go to [Reciving Slaves] for more information on how to handle them
+
+## General Flow
+
+### Slave Flow
+
+**When booting**
+1. Listen for [mDNS Slave Packets](#mdns-overview) for 5 seconds
+2. Pick the lowest avaiable [multicast address](#picking-a-multicast-address)
+3. Advertise [mDNS](#mdns-overview). You should do this until shutdown.
+4. Do all the dante protocol things
+
+**To power off**
+1. Send an mDNS goodbye message
+
+**Reciving Slaves**
+In some cases, primarily IEM transmitters, a dante reciving channel will be a virgil slave. In this case, the slave must tell their master to connect. The flow for this is the same as general slave flow, except whenever you subscribe to a dante transmitter you should:
+
+1. Listen for [mDNS Master Packets](#mdns-overview) for 5 seconds
+2. If the device that you're connecting to shows up, send a [Connect Command](#connectcommand) to the master
+
+When indexing reciving channels, add the number of transmitting channels your device has first. For example, if I had a stagebox with 16 transmitting channels, reciving channel 2 would be channelIndex 17
+
+**This section is not intended for regular outputs (e.g. digital stage boxes)**
+Right now, the only supported type of reciving slaves are wireless transmitters
+
+### Master Flow
+1. Advertise [mDNS]. You should do this until shutdown.
+4. Do all the dante protocol things
+2. Whenever you subscribe to a dante transmitter, you should
+
+    1. Listen for [mDNS Master Packets](#mdns-overview) for 5 seconds
+    2. If the device that you're connecting to shows up, send a [Parameter Request](#parameterrequest) for the information needed
+    3. Subscribe to the [multicast addresses](#picking-a-multicast-address) of the channel
+
+3. If you recive a ConnectCommand, link the provided channel to that device
+
+**To power off**
+1. Send an mDNS goodbye message
+
 
 ## mDNS Overview
 
@@ -491,6 +533,12 @@ Sent by slave to master in response to ParameterRequest.
 - **Protocol**: UDP
 - **Content**: Complete parameter definitions for requested channels/device
 - **Requirements**: Must include all supported parameters with full metadata
+
+### ConnectCommand
+Sent from a slave to a master to tell the master to connect
+This is only used when some reciving channels on the device are virgil compatable (IEM Transmitters) 
+- **Protocol**: UDP
+- **Content**: The channels on both ends
 
 ### ErrorResponse
 Sent when a command cannot be processed.
