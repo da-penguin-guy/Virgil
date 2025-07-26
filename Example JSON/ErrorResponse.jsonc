@@ -1,13 +1,13 @@
 /*
 Error Response Example
 ---------------------
-This message is sent from a slave device to a master device when a request cannot be processed.
+This message is sent from a client device to a server device when a request cannot be processed.
 It provides an error type and a human-readable error string. Error messages are sent via UDP.
 - Use when: A request is invalid, out of range, or cannot be executed for any reason.
 - Protocol: udp
 */
 {
-    "transmittingDevice": "SlaveDanteDeviceName", // The device reporting the error
+    "transmittingDevice": "ClientDanteDeviceName", // The device reporting the error
     "messages" :
     [
         {

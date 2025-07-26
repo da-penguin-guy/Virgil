@@ -1,13 +1,13 @@
 /*
 Parameter Response Example
 ---------------------------
-This message is sent from a slave device to a master device in response to a ParameterRequest with preampIndex: -1.
+This message is sent from a client device to a server device in response to a ParameterRequest with preampIndex: -1.
 It describes the device-level information such as model, device type, and dante name.
-- Use when: A master requests device-level info (not preamp-specific).
+- Use when: A server requests device-level info (not preamp-specific).
 - Protocol: udp
 */
 {
-    "transmittingDevice": "SlaveDanteDeviceName", // The device sending the info
+    "transmittingDevice": "ClientDanteDeviceName", // The device sending the info
     "messages" :
     [
         {

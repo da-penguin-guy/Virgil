@@ -1,18 +1,18 @@
-# Virgil Protocol 1.1.0
+# Virgil Protocol 1.1.1
 
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over UDP. It uses mDNS for device discovery and supports real-time parameter control and status monitoring.
 
-**This is Virgil Protocol 1.1.0**
+**This is Virgil Protocol 1.1.1**
 
-The rest of this document used the terms "master" and "slave". Masters are typically devices that will be issuing commands, such a mixer. Slaves are typically devices that will be reciving commands, such as digital stageboxes or wireless recivers.
-Slaves are almost always dante transmitters, but some devices may not be. Go to [Reciving Slaves] for more information on how to handle them
+The rest of this document used the terms "server" and "client". Servers are typically devices that will be issuing commands, such a mixer. Clients are typically devices that will be reciving commands, such as digital stageboxes or wireless recivers.
+Clients are almost always dante transmitters, but some devices may not be. Go to [Reciving Clients] for more information on how to handle them
 
 ## General Flow
 
-### Slave Flow
+### Client Flow
 
 **When booting**
-1. Listen for [mDNS Slave Packets](#mdns-overview) for 5 seconds
+1. Listen for [mDNS Client Packets](#mdns-overview) for 5 seconds
 2. Pick the lowest avaiable [multicast address](#picking-a-multicast-address)
 3. Advertise [mDNS](#mdns-overview). You should do this until shutdown.
 4. Do all the dante protocol things
@@ -20,23 +20,23 @@ Slaves are almost always dante transmitters, but some devices may not be. Go to 
 **To power off**
 1. Send an mDNS goodbye message
 
-**Reciving Slaves**
-In some cases, primarily IEM transmitters, a dante reciving channel will be a virgil slave. In this case, the slave must tell their master to connect. The flow for this is the same as general slave flow, except whenever you subscribe to a dante transmitter you should:
+**Reciving Clients**
+In some cases, primarily IEM transmitters, a dante reciving channel will be a virgil client. In this case, the client must tell their server to connect. The flow for this is the same as general client flow, except whenever you subscribe to a dante transmitter you should:
 
-1. Listen for [mDNS Master Packets](#mdns-overview) for 5 seconds
-2. If the device that you're connecting to shows up, send a [Connect Command](#connectcommand) to the master
+1. Listen for [mDNS Server Packets](#mdns-overview) for 5 seconds
+2. If the device that you're connecting to shows up, send a [Connect Command](#connectcommand) to the server
 
 When indexing reciving channels, add the number of transmitting channels your device has first. For example, if I had a stagebox with 16 transmitting channels, reciving channel 2 would be channelIndex 17
 
 **This section is not intended for regular outputs (e.g. digital stage boxes)**
-Right now, the only supported type of reciving slaves are wireless transmitters
+Right now, the only supported type of reciving clients are wireless transmitters
 
-### Master Flow
+### Server Flow
 1. Advertise [mDNS]. You should do this until shutdown.
 4. Do all the dante protocol things
 2. Whenever you subscribe to a dante transmitter, you should
 
-    1. Listen for [mDNS Master Packets](#mdns-overview) for 5 seconds
+    1. Listen for [mDNS Server Packets](#mdns-overview) for 5 seconds
     2. If the device that you're connecting to shows up, send a [Parameter Request](#parameterrequest) for the information needed
     3. Subscribe to the [multicast addresses](#picking-a-multicast-address) of the channel
 
@@ -55,7 +55,7 @@ Virgil uses a typical mDNS configuration. It is advertsed over `224.0.0.251` at 
 - **serviceName**: `{dante name}._virgil._udp.local.`
 - **txt**
   + **multicastAddress**: Unique multicast address prefix (e.g., `244.1.1`) See [Multicast Address](#statusupdate) for more information
-  + **function**: Device role (`master`, `slave`, or `both`)
+  + **function**: Device role (`server`, `client`, or `both`)
   + **model**: The model of the device
   + **deviceType**: The type of virgil device it is. For more information and allowed values, go to [Device Types](#device-types)
 
@@ -63,10 +63,10 @@ Virgil uses a typical mDNS configuration. It is advertsed over `224.0.0.251` at 
 ```jsonc
 {
   "serviceType": "_virgil._udp.local.",
-  "serviceName": "ExampleSlave._virgil._udp.local.",
+  "serviceName": "ExampleClient._virgil._udp.local.",
   "txt": {
-    "multicastAddress": "244.1.1", //Don't include if function is "master"
-    "function": "slave",
+    "multicastAddress": "244.1.1", //Don't include if function is "server"
+    "function": "client",
     "model": "PreampModelName",
     "deviceType": "digitalStageBox"
   }
@@ -81,15 +81,15 @@ mDNS isn't actually json, but this is the best way I could represent it
 
 | Type               | Description                                    | Direction             | Protocol   |
 |--------------------|------------------------------------------------|-----------------------|------------|
-| ParameterCommand   | Set or change a parameter on a device/channel  | Master → Slave        | UDP        |
-| StatusUpdate       | Notify parameter or device state change         | Slave → Masters (all) | Multicast  |
-| ParameterRequest   | Request device or channel parameter capabilities| Master → Slave        | UDP        |
-| ParameterResponse  | Reply with parameter capabilities               | Slave → Master        | UDP        |
-| ErrorResponse      | Indicate request error with details             | Slave → Master        | UDP        |
+| ParameterCommand   | Set or change a parameter on a device/channel  | Server → Client        | UDP        |
+| StatusUpdate       | Notify parameter or device state change         | Client → Servers (all) | Multicast  |
+| ParameterRequest   | Request device or channel parameter capabilities| Server → Client        | UDP        |
+| ParameterResponse  | Reply with parameter capabilities               | Client → Server        | UDP        |
+| ErrorResponse      | Indicate request error with details             | Client → Server        | UDP        |
 
 ### Message Usage
 - **ParameterCommand**: Change gain, pad, phantom power, etc.
-- **StatusUpdate**: Automatic notifications when parameters change (sent by slaves)
+- **StatusUpdate**: Automatic notifications when parameters change (sent by clients)
 - **ParameterRequest**: Discover what parameters a device supports
 - **ParameterResponse**: Reply to parameter capability requests
 - **ErrorResponse**: Report invalid commands, out-of-range values, etc.
@@ -98,13 +98,13 @@ mDNS isn't actually json, but this is the best way I could represent it
 
 ## Parameters
 
-Virgil supports various audio parameters. Only `gain` is mandatory for all devices to ensure masters can always read the gain value, even on fixed-gain devices.
+Virgil supports various audio parameters. Only `gain` is mandatory for all devices to ensure servers can always read the gain value, even on fixed-gain devices.
 
 ### Parameter Structure
 
 Each parameter is a JSON object with the following fields:
 
-- `value`: Current parameter value (only field changeable by masters)
+- `value`: Current parameter value (only field changeable by servers)
 - `dataType`: Data type (`number`, `bool`, `string`, `enum`)
 - `unit` (Required for number): Unit of measurement (e.g., `dB`, `Hz`, `%`)
 - `minValue` (Required for number): Minimum allowed value
@@ -436,7 +436,7 @@ Example:
 ### Continuous Parameter Status Update Example
 ```jsonc
 {
-  "transmittingDevice": "SlaveDanteDeviceName",
+  "transmittingDevice": "ClientDanteDeviceName",
   "messages": [
     {
       "messageType": "StatusUpdate",
@@ -455,22 +455,22 @@ Example:
 ## Multicast Addressing
 
 ### Overview
-- Each slave device advertises a unique multicast address prefix (e.g., `244.1.1`) via mDNS and Parameter Responses.
-- The slave then broadcasts StatusUpdates over their multicast address (port 7889)
+- Each client device advertises a unique multicast address prefix (e.g., `244.1.1`) via mDNS and Parameter Responses.
+- The client then broadcasts StatusUpdates over their multicast address (port 7889)
 - To receive status updates for a specific channel, append the channel index to the prefix:
   - Channel 0: `244.1.1.0`
   - Channel 1: `244.1.1.1`
   - Channel N: `244.1.1.N`
-- There is no multicast address for all channels at once. Masters must subscribe to each channel’s multicast address individually to receive updates for all channels.
+- There is no multicast address for all channels at once. Servers must subscribe to each channel’s multicast address individually to receive updates for all channels.
 
 ### Picking a Multicast address
 **It is very important that no 2 devices have the same multicast address.**  
-This means that before any slave advertises via mDNS, it must first listen on mDNS for all current slaves for a minimum of 5 seconds  
-The slave then takes the lowest valid address that is not taken  
+This means that before any client advertises via mDNS, it must first listen on mDNS for all current clients for a minimum of 5 seconds  
+The client then takes the lowest valid address that is not taken  
 Multicasts are send using ASM (Traditonal multicast). This means that the range of multicast addresses are from `224.1.1` to `239.255.255`
 
 **Summary:**
-Slaves broadcast status updates for each channel on its own multicast address. Masters listen to the relevant addresses to receive real-time updates. This design allows efficient, channel-specific monitoring and control.
+Clients broadcast status updates for each channel on its own multicast address. Servers listen to the relevant addresses to receive real-time updates. This design allows efficient, channel-specific monitoring and control.
 
 ---
 
@@ -505,14 +505,14 @@ However, some channels may not be controllable (e.g., auxiliary inputs on mixers
 ## Message Details
 
 ### ParameterCommand
-Sent by master to slave to update parameters.
+Sent by server to client to update parameters.
 - **Protocol**: UDP
 - **Content**: Only includes parameters being changed
-- **Target**: Specific slave device
+- **Target**: Specific client device
 
 
 ### StatusUpdate
-Sent by slave devices to all masters when parameters change or for real-time monitoring.
+Sent by client devices to all servers when parameters change or for real-time monitoring.
 - **Protocol**: Multicast UDP
 - **Content**: All values for affected channels
 - **Trigger**: Sent automatically when parameters change or every 500ms for continuous parameters (e.g., audioLevel, rfLevel, batteryLevel)
@@ -520,7 +520,7 @@ Sent by slave devices to all masters when parameters change or for real-time mon
 See [Multicast Addressing](#multicast-addressing) for more information on multicast messages
 
 ### ParameterRequest
-Sent by master to slave to discover device capabilities.
+Sent by server to client to discover device capabilities.
 - **Protocol**: UDP
 - **Channel Index Values**:
   - `-1`: Device-level information only
@@ -529,13 +529,13 @@ Sent by master to slave to discover device capabilities.
 - **Response**: ParameterResponse message
 
 ### ParameterResponse
-Sent by slave to master in response to ParameterRequest.
+Sent by client to server in response to ParameterRequest.
 - **Protocol**: UDP
 - **Content**: Complete parameter definitions for requested channels/device
 - **Requirements**: Must include all supported parameters with full metadata
 
 ### ConnectCommand
-Sent from a slave to a master to tell the master to connect
+Sent from a client to a server to tell the server to connect
 This is only used when some reciving channels on the device are virgil compatable (IEM Transmitters) 
 - **Protocol**: UDP
 - **Content**: The channels on both ends
@@ -568,7 +568,7 @@ Sent when a command cannot be processed.
 ## Implementation Notes
 
 - **Error Handling**: Always provide clear, user-friendly error messages in `errorString`
-- **Parameter Discovery**: Masters should query device capabilities before attempting to control parameters
+- **Parameter Discovery**: Servers should query device capabilities before attempting to control parameters
 - **Continuous Monitoring**: Implement 500ms update intervals for continuous parameters
 - **Network Resilience**: Handle device disconnections and reconnections gracefully
 - **Example Files**: Reference the `Example JSON/` directory for complete message examples
@@ -578,4 +578,4 @@ Sent when a command cannot be processed.
 ## See Also
 
 - Example JSON message files in the `Example JSON/` directory
-- Master and Slave example implementations in respective directories
+- Server and Client example implementations in respective directories

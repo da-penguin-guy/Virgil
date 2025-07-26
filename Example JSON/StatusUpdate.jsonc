@@ -1,13 +1,13 @@
 /*
 Status Update Example
 --------------------
-This message is sent from a slave device to all subscribed master devices whenever a property in a preamp is updated.
+This message is sent from a client device to all subscribed server devices whenever a property in a preamp is updated.
 It contains the current state of the preamp (or device) after a change. Status updates are multicast (UDP).
 - Use when: A preamp parameter changes (e.g., gain, pad, etc.) or device info changes.
 - Protocol: multicast
 */
 {
-    "transmittingDevice": "SlaveDanteDeviceName", // The device sending the update
+    "transmittingDevice": "ClientDanteDeviceName", // The device sending the update
     "messages" :
     [
         {

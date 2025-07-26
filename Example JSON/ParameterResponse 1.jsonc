@@ -1,14 +1,14 @@
 /*
 Parameter Response Example
 ------------------------------
-This message is sent from a slave device to a master device in response to a ParameterRequest.
+This message is sent from a client device to a server device in response to a ParameterRequest.
 It describes the capabilities and current state of a preamp, including supported parameters, ranges, and lock status.
-- Use when: A master requests detailed information about a preamp's capabilities and current settings.
+- Use when: A server requests detailed information about a preamp's capabilities and current settings.
 - Protocol: udp
 This has every parameter. I can't think of a single reason one device would have all of these, but who cares. 
 */
 {
-    "transmittingDevice": "SlaveDanteDeviceName", // The device sending the info
+    "transmittingDevice": "ClientDanteDeviceName", // The device sending the info
     "messages" :
     [
         {

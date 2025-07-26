@@ -1,13 +1,13 @@
 /*
 Parameter Command Example
 ------------------------
-This message is sent from a master device to a slave device to change one or more parameters on a preamp.
+This message is sent from a server device to a client device to change one or more parameters on a preamp.
 Only the parameters being updated are included. Sent via UDP.
 - Use when: You want to change a parameter (e.g., gain, lowcut) on a specific preamp.
 - Protocol: udp
 */
 {
-    "transmittingDevice": "MasterDanteDeviceName", // The device sending the command
+    "transmittingDevice": "ServerDanteDeviceName", // The device sending the command
     "messages" :
     [
         {

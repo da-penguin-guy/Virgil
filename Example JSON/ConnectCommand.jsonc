@@ -1,6 +1,6 @@
 
 {
-    "transmittingDevice": "SlaveDanteDeviceName", 
+    "transmittingDevice": "ClientDanteDeviceName", 
     "messages" :
     [
         {
