@@ -1,5 +1,7 @@
 # Virgil Protocol 1.1.1
 
+Dont implement im gonna change a lot
+
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over UDP. It uses mDNS for device discovery and supports real-time parameter control and status monitoring.
 
 **This is Virgil Protocol 1.1.1**
