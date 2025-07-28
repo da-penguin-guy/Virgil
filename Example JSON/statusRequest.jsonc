@@ -1,0 +1,11 @@
+{
+    "transmittingDevice": "DanteDeviceName", // The device sending the command
+    "messages" :
+    [
+        {
+            "messageType" : "statusRequest", // Indicates this is a status request
+            "channelIndex" : 1, // The index of the channel being requested
+            "channelType" : "tx", // Type of channel (tx, rx, or aux)
+        }
+    ]
+}

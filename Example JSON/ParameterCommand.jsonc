@@ -1,21 +1,14 @@
-/*
-Parameter Command Example
-------------------------
-This message is sent from a server device to a client device to change one or more parameters on a preamp.
-Only the parameters being updated are included. Sent via UDP.
-- Use when: You want to change a parameter (e.g., gain, lowcut) on a specific preamp.
-- Protocol: udp
-*/
 {
-    "transmittingDevice": "ServerDanteDeviceName", // The device sending the command
+    "transmittingDevice": "DanteDeviceName", // The device sending the command
     "messages" :
     [
         {
-            "messageType" : "ParameterCommand", // Indicates this is a parameter command
-            "channelIndex" : 0,                    // The channel to control
-            "gain" : 10,           // Gain value to set (dB)
-            "lowcut" : 0,           // Lowcut filter value to set (Hz)
-            "transmitPower" : "high"   // Transmit power value to set (dB)
+            "messageType" : "parameterCommand", // Indicates this is a parameter command
+            "channelIndex" : 1, // The index of the channel being modified
+            "channelType" : "tx", // Type of channel (tx, rx, or aux)
+
+            "gain" : 20,
+            "lowcut" : 80
         }
     ]
 }

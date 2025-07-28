@@ -1,21 +1,24 @@
-/*
-Status Update Example
---------------------
-This message is sent from a client device to all subscribed server devices whenever a property in a preamp is updated.
-It contains the current state of the preamp (or device) after a change. Status updates are multicast (UDP).
-- Use when: A preamp parameter changes (e.g., gain, pad, etc.) or device info changes.
-- Protocol: multicast
-*/
 {
-    "transmittingDevice": "ClientDanteDeviceName", // The device sending the update
+    "transmittingDevice": "DanteDeviceName", // The device sending the command
     "messages" :
     [
         {
-            "messageType" : "StatusUpdate", // Indicates this is a status update
-            "channelIndex" : 0,              // The channel index being updated
-            "gain" : 0, //No special formating, just a value
-            "lowcut" : 20,
-            "polarity" : false
+            "messageType" : "statusUpdate", // Indicates this is a status update
+            "channelIndex" : 1, // The index of the channel being updated
+            "channelType" : "tx", // Type of channel (tx, rx, or aux)
+
+            //This should only include parameters that have changed since the last status update
+            //If a parameter is not included, it is assumed to be unchanged
+            "gain" : {
+                "value": 20, 
+                "minValue": -5, 
+            },
+            "lowcut" : {
+                "value": 100
+            },
+            "transmitPower" : {
+                "readOnly" : false, 
+            }
         }
     ]
 }

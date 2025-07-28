@@ -1,65 +1,25 @@
-# Virgil Protocol 1.1.1
-
-Dont implement im gonna change a lot
+# Virgil Protocol 2.0.0
 
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over UDP. It uses mDNS for device discovery and supports real-time parameter control and status monitoring.
 
-**This is Virgil Protocol 1.1.1**
+**This is Virgil Protocol 2.0.0**
 
-The rest of this document used the terms "server" and "client". Servers are typically devices that will be issuing commands, such a mixer. Clients are typically devices that will be reciving commands, such as digital stageboxes or wireless recivers.
-Clients are almost always dante transmitters, but some devices may not be. Go to [Reciving Clients] for more information on how to handle them
-
-## General Flow
-
-### Client Flow
-
-**When booting**
-1. Listen for [mDNS Client Packets](#mdns-overview) for 5 seconds
-2. Pick the lowest avaiable [multicast address](#picking-a-multicast-address)
-3. Advertise [mDNS](#mdns-overview). You should do this until shutdown.
-4. Do all the dante protocol things
-
-**To power off**
-1. Send an mDNS goodbye message
-
-**Reciving Clients**
-In some cases, primarily IEM transmitters, a dante reciving channel will be a virgil client. In this case, the client must tell their server to connect. The flow for this is the same as general client flow, except whenever you subscribe to a dante transmitter you should:
-
-1. Listen for [mDNS Server Packets](#mdns-overview) for 5 seconds
-2. If the device that you're connecting to shows up, send a [Connect Command](#connectcommand) to the server
-
-When indexing reciving channels, add the number of transmitting channels your device has first. For example, if I had a stagebox with 16 transmitting channels, reciving channel 2 would be channelIndex 17
-
-**This section is not intended for regular outputs (e.g. digital stage boxes)**
-Right now, the only supported type of reciving clients are wireless transmitters
-
-### Server Flow
-1. Advertise [mDNS]. You should do this until shutdown.
-4. Do all the dante protocol things
-2. Whenever you subscribe to a dante transmitter, you should
-
-    1. Listen for [mDNS Server Packets](#mdns-overview) for 5 seconds
-    2. If the device that you're connecting to shows up, send a [Parameter Request](#parameterrequest) for the information needed
-    3. Subscribe to the [multicast addresses](#picking-a-multicast-address) of the channel
-
-3. If you recive a ConnectCommand, link the provided channel to that device
-
-**To power off**
-1. Send an mDNS goodbye message
+In previous versions of the virgil protocol, devices were categorized 
 
 
-## mDNS Overview
 
-Virgil uses a typical mDNS configuration. It is advertsed over `224.0.0.251` at port `5353`  
+
+# mDNS Overview
+
+Virgil uses a typical mDNS configuration. It is advertised over `224.0.0.251` at port `5353`  
+The protocol will (almost) fully function on a network that doesn't support mDNS. mDNS is only used for a dante controller like app and detecting accessories 
 
 ### Service Configuration
 - **serviceType**: `_virgil._udp.local.`
 - **serviceName**: `{dante name}._virgil._udp.local.`
 - **txt**
-  + **multicastAddress**: Unique multicast address prefix (e.g., `244.1.1`) See [Multicast Address](#statusupdate) for more information
-  + **function**: Device role (`server`, `client`, or `both`)
-  + **model**: The model of the device
-  + **deviceType**: The type of virgil device it is. For more information and allowed values, go to [Device Types](#device-types)
+  + **model**: The model of the device (eg. M32)
+  + **deviceType**: The type of device it is. For more information and allowed values, go to [Device Types](#device-types)
 
 **Example mDNS Service Advertisement:**
 ```jsonc
@@ -67,9 +27,7 @@ Virgil uses a typical mDNS configuration. It is advertsed over `224.0.0.251` at 
   "serviceType": "_virgil._udp.local.",
   "serviceName": "ExampleClient._virgil._udp.local.",
   "txt": {
-    "multicastAddress": "244.1.1", //Don't include if function is "server"
-    "function": "client",
-    "model": "PreampModelName",
+    "model": "DeviceModelName",
     "deviceType": "digitalStageBox"
   }
 }
@@ -77,30 +35,49 @@ Virgil uses a typical mDNS configuration. It is advertsed over `224.0.0.251` at 
 mDNS isn't actually json, but this is the best way I could represent it
 
 
----
 
-## Message Types
+# Message Types
 
-| Type               | Description                                    | Direction             | Protocol   |
-|--------------------|------------------------------------------------|-----------------------|------------|
-| ParameterCommand   | Set or change a parameter on a device/channel  | Server → Client        | UDP        |
-| StatusUpdate       | Notify parameter or device state change         | Client → Servers (all) | Multicast  |
-| ParameterRequest   | Request device or channel parameter capabilities| Server → Client        | UDP        |
-| ParameterResponse  | Reply with parameter capabilities               | Client → Server        | UDP        |
-| ErrorResponse      | Indicate request error with details             | Client → Server        | UDP        |
+| Type                | Description                                          | Protocol|
+|---------------------|------------------------------------------------------|---------|
+| parameterCommand    | Set or change a parameter on a device/channel        | UDP     |
+| statusUpdate        | Notify parameter or device state change              | UDP     |
+| statusRequest       | Sent to a device to request a status update          | UDP     |
+| channelLink         | A message telling a device it's linked channels      | UDP     |
+| infoRequest		  | A message requesting information on a device/channel | UDP	   |
+| infoResponse 		  | A response to an infoRequest 						 | UDP     |
+| errorResponse       | A message containing an error						 | UDP     |
+| subscribeMessage    | A message subscribing to a certain channel           | UDP     |
+
 
 ### Message Usage
-- **ParameterCommand**: Change gain, pad, phantom power, etc.
-- **StatusUpdate**: Automatic notifications when parameters change (sent by clients)
-- **ParameterRequest**: Discover what parameters a device supports
-- **ParameterResponse**: Reply to parameter capability requests
-- **ErrorResponse**: Report invalid commands, out-of-range values, etc.
+- **parameterCommand**: Change gain, pad, phantom power, etc.
+- **statusUpdate**: Automatic notifications when parameters change (or after a statusRequest)
+- **statusRequest**: To request a status update
+- **channelLink**: When first connecting to a device
+- **infoRequest**: To get what parameters a channel has
+- **infoResponse**: To answer an infoRequest
+- **errorResponse**: To tell a device an error has occurred
+- **subscribeMessage**: This isn't intended to be used by actual devices. You should instead [link channels](#linking-channels). This is meant for a dante-controller type app
 
----
 
-## Parameters
+# Channel Types
+There are 3 types of channels. They are `tx`, `rx`, and `aux`  
+`tx` and `rx` channels correspond with Dante transmitting and receiving channels. For every dante channel a device has, it must have a corresponding tx/rx channel  
+tx/rx channels can be linked together. For more information, go to [Linking Channels](#linking-channels)  
+Aux channels do not have a Dante equivalent. They are instead used for sending simple values to a device (Think an in-wall dial connected to a mixer)  
+Aux channels can be linked to a device, not another channel. For more information, go to [Linking Channels](#linking-channels)  
 
-Virgil supports various audio parameters. Only `gain` is mandatory for all devices to ensure servers can always read the gain value, even on fixed-gain devices.
+Channel indices start at 0
+
+## Linking Channels
+Channels are linked together to represent the flow of data. Linking to a channel automatically subscribes each device to its corresponding channel. Rx channels can only be linked to Tx channels. Either side can initiate the link by sending a channelLink.  
+
+Aux channels can only be linked to another device. Only the device can initiate the link.
+
+# Parameters
+
+Virgil supports various audio parameters. Only `gain` is mandatory for all channels involving a preamp, even on fixed-gain preamps.
 
 ### Parameter Structure
 
@@ -108,15 +85,16 @@ Each parameter is a JSON object with the following fields:
 
 - `value`: Current parameter value (only field changeable by servers)
 - `dataType`: Data type (`number`, `bool`, `string`, `enum`)
-- `unit` (Required for number): Unit of measurement (e.g., `dB`, `Hz`, `%`)
-- `minValue` (Required for number): Minimum allowed value
-- `maxValue` (Required for number): Maximum allowed value  
-- `precision` (Required for number): Step size
-- `locked`: If true, parameter cannot be changed
+- `unit` (Required for numbers not readonly): Unit of measurement (e.g., `dB`, `Hz`, `%`)
+- `minValue` (Required for numbers not readonly): Minimum allowed value
+- `maxValue` (Required for numbers not readonly): Maximum allowed value  
+- `precision` (Required for numbers not readonly): Step size
+- `readOnly`: If true, parameter cannot be changed
 - `enumValues` (enum only): Array of valid string values
 
 ### Data Type Notes
 
+- **Locked**: Below, I use the word "locked" often. This means if the control of said parameter is disabled for whatever reason. Don't include a parameter that your device doesn't have
 - **Enum**: Represented as an array of valid string values in `enumValues`
 - **Percentage**: Use `%` as unit with `minValue: 0`, `maxValue: 100`, `dataType: "number"`, and `precision : 1`
 - **Precision**: Values increment from `minValue` by `precision` steps (e.g., precision 3dB, minValue -5dB = -5, -2, 1, 4...)
@@ -126,7 +104,8 @@ The formula to see if a value is valid is:
   isValid = (value - minValue) % precision and value > minValue and value < maxValue
 ```
 
-### Example: Enum Parameter
+
+Example Enum Parameter:
 ```jsonc
 {
   "transmitPower": {
@@ -151,7 +130,7 @@ Analog gain of the channel (independent of pad)
 - **dataType**: number
 - **minValue**: Device-specific minimum gain
 - **maxValue**: Device-specific maximum gain
-- **locked**: true if gain is fixed or disabled
+- **readOnly**: true if gain is fixed or disabled
 
 Example:
 ```jsonc
@@ -162,7 +141,7 @@ Example:
   "maxValue" : 50,
   "value" : 10,
   "precision" : 1, // Can be higher or lower, depending on your device's precision. For example, 0.1
-  "locked" : false 
+  "readOnly" : false 
 }
 ```  
 
@@ -176,23 +155,38 @@ Alternative example with fixed gain
   "maxValue" : 30,
   "precision" : 1,
   "value" : 30,
-  "locked" : true
+  "readOnly" : true
 }
 ``` 
 
 #### pad
 Input attenuator control
 - **dataType**: bool (true = enabled, false = disabled)
-- **Additional**: `padLevel` field specifies attenuation amount in dB (usually negative)
-- **locked**: true if pad cannot be changed
+- **readOnly**: true if pad cannot be changed
 
 Example:
 ```jsonc
 "pad" : {
   "dataType" : "bool",
   "value" : false,
-  "locked" : false,
-  "padLevel" : -10 //This means that enableing the pad drops the input by 10dB
+  "readOnly" : false,
+}
+``` 
+
+#### padLevel
+The amount enabling the pad lowers the signal
+- **dataType**: number (usually negative)
+- **unit**: dB
+- **readOnly**: Always True (I guess a variable pad is possible, but I've never heard of a preamp with one. Will update if needed)
+- **Note**: Required if channel has `pad` variable
+
+Example:
+```jsonc
+"padLevel" : {
+  "dataType" : "number",
+  "unit": "dB",
+  "value" : -10,
+  "readOnly" : true,
 }
 ``` 
 
@@ -203,7 +197,7 @@ High-pass filter frequency
 - **minValue**: Device-specific minimum frequency
 - **maxValue**: Device-specific maximum frequency
 - **precision**: Precision of the frequency selection 
-- **locked**: true if filter cannot be changed
+- **readOnly**: true if filter cannot be changed
 - **Notes**: Only include this is your device has a physical lowcut circuit. Do not include this if it's a dsp lowcut
 
 Example:
@@ -213,16 +207,16 @@ Example:
   "unit" : "hz",
   "minValue" : 0,
   "maxValue" : 150,
-  "precison" : 1,
+  "precision" : 1,
   "value" : 100,
-  "locked" : false,
+  "readOnly" : false,
 }
 ``` 
 
 #### lowcutEnable
 Enable/disable high-pass filter
 - **dataType**: bool (true = enabled, false = disabled)
-- **locked**: true if control cannot be changed
+- **readOnly**: true if control cannot be changed
 - **Notes**: If your device has lowcut, it must also have lowcutEnable
 
 Example:
@@ -230,49 +224,49 @@ Example:
 "lowcutEnable" : {
   "dataType" : "bool",
   "value" : true,
-  "locked" : false,
+  "readOnly" : false,
 }
 ``` 
 
 #### polarity
 Signal polarity (phase invert)
 - **dataType**: bool (true = inverted, false = normal)
-- **locked**: true if polarity cannot be changed
+- **readOnly**: true if polarity is locked (Don't include this if your device can't change polarity)
 
 Example:
 ```jsonc
 "polarity" : {
   "dataType" : "bool",
   "value" : true,
-  "locked" : false,
+  "readOnly" : false,
 }
 ``` 
 
 #### phantomPower
 Phantom power control
 - **dataType**: bool (true = enabled, false = disabled)
-- **locked**: true if phantom power cannot be changed
+- **readOnly**: true if phantom power is locked
 
 Example:
 ```jsonc
 "phantomPower" : {
   "dataType" : "bool",
   "value" : false,
-  "locked" : false,
+  "readOnly" : false,
 }
 ``` 
 
 #### rfEnable
 RF transmitter/receiver control
 - **dataType**: bool (true = enabled, false = disabled)
-- **locked**: true if RF cannot be changed
+- **readOnly**: true if RF is locked
 
 Example:
 ```jsonc
 "rfEnable" : {
   "dataType" : "bool",
   "value" : true,
-  "locked" : false,
+  "readOnly" : false,
 }
 ``` 
 
@@ -280,7 +274,7 @@ Example:
 Transmitter power level (typically for IEM systems)
 - **dataType**: enum/number
 - **unit**: % (only include if dataType is number)
-- **locked**: true if transmit power cannot be changed
+- **readOnly**: true if transmit power is locked
 
 Example:
 ```jsonc
@@ -288,7 +282,7 @@ Example:
   "dataType" : "enum",
   "enumValues" : ["low", "medium", "high"],
   "value" : true,
-  "locked" : false,
+  "readOnly" : false,
 }
 ``` 
 
@@ -301,7 +295,7 @@ Example with percentage:
   "maxValue": 100,
   "precision": 1,
   "value" : 100,
-  "locked" : false,
+  "readOnly" : false,
 }
 ``` 
 
@@ -311,7 +305,7 @@ Squelch threshold (mutes audio/RF below threshold)
 - **dataType**: number
 - **minValue**: Device-specific minimum threshold
 - **maxValue**: Device-specific maximum threshold
-- **locked**: true if squelch cannot be changed
+- **readOnly**: true if squelch is locked
 
 Example:
 ```jsonc
@@ -322,7 +316,7 @@ Example:
   "maxValue": 50,
   "precision": 1,
   "value" : 40,
-  "locked" : false,
+  "readOnly" : false,
 }
 ``` 
 
@@ -335,7 +329,7 @@ Example with percentage:
   "maxValue": 100,
   "precision": 1,
   "value" : 100,
-  "locked" : false,
+  "readOnly" : false,
 }
 ``` 
 
@@ -344,21 +338,21 @@ Example with percentage:
 #### transmitterConnected
 Wireless transmitter connection status
 - **dataType**: bool
-- **locked**: Always true (read-only)
+- **readOnly**: Always true (read-only)
 
 Example:
 ```jsonc
 "transmitterConnected" : {
   "dataType" : "bool",
   "value" : false,
-  "locked" : true,
+  "readOnly" : true,
 }
 ``` 
 
 #### subDevice
 Type of device connected to this channel
 - **dataType**: string
-- **locked**: Always true (read-only)
+- **readOnly**: Always true (read-only)
 - **Valid Values**: `handheld`, `beltpack`, `gooseneck`, `iem`, `xlr`, `trs`, `disconnected`, `other`
 
 Example:
@@ -366,7 +360,7 @@ Example:
 "subDevice" : {
   "dataType" : "string",
   "value" : "handheld",
-  "locked" : true,
+  "readOnly" : true,
 }
 ``` 
 
@@ -378,7 +372,7 @@ These parameters change frequently and require status updates every 500ms:
 Audio signal level
 - **unit**: dBFS
 - **dataType**: number
-- **locked**: Always true (read-only)
+- **readOnly**: Always true (read-only)
 - **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
 
 Example:
@@ -387,7 +381,7 @@ Example:
   "dataType" : "number",
   "unit" : "dBFS",
   "value" : -18,
-  "locked" : true,
+  "readOnly" : true,
 }
 ``` 
 
@@ -395,7 +389,7 @@ Example:
 RF signal strength
 - **unit**: dB or %
 - **dataType**: number
-- **locked**: Always true (read-only)
+- **readOnly**: Always true (read-only)
 - **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
 
 Example:
@@ -404,7 +398,7 @@ Example:
   "dataType" : "number",
   "unit" : "dB",
   "value" : 40,
-  "locked" : true,
+  "readOnly" : true,
 }
 ``` 
 
@@ -414,7 +408,7 @@ Example with percentage:
   "dataType" : "number",
   "unit" : "%",
   "value" : 100,
-  "locked" : true,
+  "readOnly" : true,
 }
 ``` 
 
@@ -422,7 +416,7 @@ Example with percentage:
 Connected device battery level
 - **unit**: %
 - **dataType**: number
-- **locked**: Always true (read-only)
+- **readOnly**: Always true (read-only)
 - **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
 
 Example:
@@ -431,7 +425,7 @@ Example:
   "dataType" : "number",
   "unit" : "%",
   "value" : 40,
-  "locked" : true,
+  "readOnly" : true,
 }
 ``` 
 
@@ -454,29 +448,11 @@ Example:
 
 ---
 
-## Multicast Addressing
 
-### Overview
-- Each client device advertises a unique multicast address prefix (e.g., `244.1.1`) via mDNS and Parameter Responses.
-- The client then broadcasts StatusUpdates over their multicast address (port 7889)
-- To receive status updates for a specific channel, append the channel index to the prefix:
-  - Channel 0: `244.1.1.0`
-  - Channel 1: `244.1.1.1`
-  - Channel N: `244.1.1.N`
-- There is no multicast address for all channels at once. Servers must subscribe to each channel’s multicast address individually to receive updates for all channels.
-
-### Picking a Multicast address
-**It is very important that no 2 devices have the same multicast address.**  
-This means that before any client advertises via mDNS, it must first listen on mDNS for all current clients for a minimum of 5 seconds  
-The client then takes the lowest valid address that is not taken  
-Multicasts are send using ASM (Traditonal multicast). This means that the range of multicast addresses are from `224.1.1` to `239.255.255`
-
-**Summary:**
-Clients broadcast status updates for each channel on its own multicast address. Servers listen to the relevant addresses to receive real-time updates. This design allows efficient, channel-specific monitoring and control.
 
 ---
 
-## Device Information
+# Device Information
 
 ### Device Types
 Valid values for the `deviceType` parameter:
@@ -489,63 +465,25 @@ Valid values for the `deviceType` parameter:
 - `computer`
 
 ### Device-Level Parameters
-These parameters are only present in device-level responses (`channelIndex: -1`):
+These parameters are only present in device information responses:
 
-- **model**: Device model name (string, read-only)
-- **deviceType**: Device category (string, read-only)
-- **virgilVersion**: Protocol version being used (string, read-only)
-- **channelIndices**: Array of available channel indices (array, read-only)
-- **multicastAddress**: Unique multicast address prefix for the device (string, read-only)
-
-### Channel Indices
-The `channelIndices` array lists all controllable channels. Most devices use sequential numbering (e.g., `[0,1,2,3,4,5,6,7]` for 8 channels).
-
-However, some channels may not be controllable (e.g., auxiliary inputs on mixers). If channel 5 of an 8-channel device is not controllable, the array would be `[0,1,2,3,4,6,7]`.
-
----
-
-## Message Details
-
-### ParameterCommand
-Sent by server to client to update parameters.
-- **Protocol**: UDP
-- **Content**: Only includes parameters being changed
-- **Target**: Specific client device
+- **model**: Device model name 
+- **deviceType**: Device category (string)
+- **virgilVersion**: Protocol version being used (string)
+- **channelCounts**: The counts for each various types of channels
+	- The 3 channel types are `tx`, `rx`, and `aux`
 
 
-### StatusUpdate
-Sent by client devices to all servers when parameters change or for real-time monitoring.
-- **Protocol**: Multicast UDP
-- **Content**: All values for affected channels
-- **Trigger**: Sent automatically when parameters change or every 500ms for continuous parameters (e.g., audioLevel, rfLevel, batteryLevel)
+# Message Details
 
-See [Multicast Addressing](#multicast-addressing) for more information on multicast messages
+### Status Update
+A status update can be triggered by 3 events.
+1. A parameter was changed
+2. You have continuous parameters and it has been 500 ms since the last update
+3. A statusRequest was received
 
-### ParameterRequest
-Sent by server to client to discover device capabilities.
-- **Protocol**: UDP
-- **Channel Index Values**:
-  - `-1`: Device-level information only
-  - `0` to `N-1`: Specific channel information
-  - `-2`: Both device and all channel information
-- **Response**: ParameterResponse message
-
-### ParameterResponse
-Sent by client to server in response to ParameterRequest.
-- **Protocol**: UDP
-- **Content**: Complete parameter definitions for requested channels/device
-- **Requirements**: Must include all supported parameters with full metadata
-
-### ConnectCommand
-Sent from a client to a server to tell the server to connect
-This is only used when some reciving channels on the device are virgil compatable (IEM Transmitters) 
-- **Protocol**: UDP
-- **Content**: The channels on both ends
-
-### ErrorResponse
-Sent when a command cannot be processed.
-- **Protocol**: UDP
-- **Content**: Error code and human-readable description
+In cases 1 and 2, the status update should be sent to all devices subscribed to that channel.
+In case 3, the status update should be sent to the ip address that requested it
 
 #### Error Types
 - `UnrecognizedCommand`: Unknown message type
@@ -567,7 +505,7 @@ Sent when a command cannot be processed.
 
 ---
 
-## Implementation Notes
+# Implementation Notes
 
 - **Error Handling**: Always provide clear, user-friendly error messages in `errorString`
 - **Parameter Discovery**: Servers should query device capabilities before attempting to control parameters
@@ -577,7 +515,7 @@ Sent when a command cannot be processed.
 
 ---
 
-## See Also
+# See Also
 
 - Example JSON message files in the `Example JSON/` directory
 - Server and Client example implementations in respective directories

@@ -1,0 +1,43 @@
+{
+    "transmittingDevice": "DanteDeviceName", // The device sending the command
+    "messages" :
+    [
+        {
+            "messageType" : "infoRequest", // Indicates this is a info request
+            "channelIndex" : 1, // The index of the channel being requested
+            "channelType" : "tx", // Type of channel (tx, rx, or aux)
+
+            "gain" : {
+                "unit" : "dB",
+                "dataType" : "number",
+                "minValue" : -10,
+                "maxValue" : 50,
+                "value" : 10,
+                "precision" : 1, // Can be higher or lower, depending on your device's precision. For example, 0.1
+                "readOnly" : false 
+            },
+            "pad" : {
+                "dataType" : "bool",
+                "value" : false,
+                "readOnly" : false,
+            },
+            "padLevel" : {
+                "dataType" : "number",
+                "unit": "dB",
+                "value" : -10,
+                "readOnly" : true,
+            },
+            "phantomPower" : {
+                "dataType" : "bool",
+                "value" : false,
+                "readOnly" : false,
+            },
+            "audioLevel" : {
+                "dataType" : "number",
+                "unit" : "dBFS",
+                "value" : -18,
+                "readOnly" : true,
+            }
+        }
+    ]
+}

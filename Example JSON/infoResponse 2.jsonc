@@ -1,0 +1,19 @@
+{
+    "transmittingDevice": "DanteDeviceName", // The device sending the command
+    "messages" :
+    [
+        {
+            "messageType" : "infoRequest", // Indicates this is a info request
+            "channelIndex" : -1, // Indicates that this request is for device info, not a specific channel
+            "model" : "DeviceModelName",
+            "virgilVersion" : "2.0.0",
+            "deviceType" : "digitalStageBox", // Type of device
+            "channelCounts" :
+            {
+                "tx" : 8, // Number of transmit channels
+                "rx" : 8, // Number of receive channels
+                "aux" : 4 // Number of auxiliary channels
+            }
+        }
+    ]
+}

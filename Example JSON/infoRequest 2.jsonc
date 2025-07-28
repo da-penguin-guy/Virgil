@@ -1,0 +1,10 @@
+{
+    "transmittingDevice": "DanteDeviceName", // The device sending the command
+    "messages" :
+    [
+        {
+            "messageType" : "infoRequest", // Indicates this is a info request
+            "channelIndex" : -1, // Requesting device info, no specific channel index
+        }
+    ]
+}
