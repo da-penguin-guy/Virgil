@@ -1,0 +1,9 @@
+{
+    "transmittingDevice": "DanteDeviceName", // The device sending the command
+    "messages" :
+    [
+        {
+            "messageType" : "endResponse", // Indicates this is an end response message
+        }
+    ]
+}

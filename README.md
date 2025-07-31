@@ -1,11 +1,18 @@
 # Virgil Protocol 2.0.0
 
-Virgil is a network protocol for controlling audio devices using JSON-formatted messages over UDP. It uses mDNS for device discovery and supports real-time parameter control and status monitoring.
+Virgil is a network protocol for controlling audio devices using JSON-formatted messages over TCP. It uses mDNS for device discovery and supports real-time parameter control and status monitoring.
 
 **This is Virgil Protocol 2.0.0**
 
-In previous versions of the virgil protocol, devices were categorized 
+In previous versions of the virgil protocol, devices were categorized in Master/Slave/Server/Client. That no longer exists
 
+# Communication
+
+All networked communication should occur using the UTF-8 encoding.
+
+TCP sockets should open when the devices boot up and only close once one of the devices goes offline
+
+Keep track of the last time a message was received from each device. If 2 seconds has gone by without a device message, send a statusRequest on one of your linked channels
 
 
 
@@ -40,25 +47,30 @@ mDNS isn't actually json, but this is the best way I could represent it
 
 | Type                | Description                                          | Protocol|
 |---------------------|------------------------------------------------------|---------|
-| parameterCommand    | Set or change a parameter on a device/channel        | UDP     |
-| statusUpdate        | Notify parameter or device state change              | UDP     |
-| statusRequest       | Sent to a device to request a status update          | UDP     |
-| channelLink         | A message telling a device it's linked channels      | UDP     |
-| infoRequest		  | A message requesting information on a device/channel | UDP	   |
-| infoResponse 		  | A response to an infoRequest 						 | UDP     |
-| errorResponse       | A message containing an error						 | UDP     |
-| subscribeMessage    | A message subscribing to a certain channel           | UDP     |
-
+| parameterCommand    | Set or change a parameter on a device/channel        | TCP     |
+| statusUpdate        | Notify parameter or device state change              | TCP     |
+| statusRequest       | Sent to a device to request a status update          | TCP     |
+| channelLink         | A message telling a device it's linked channels      | TCP     |
+| channelUnlink       | A message telling a device to unlink channels        | TCP     |
+| infoRequest		      | A message requesting information on a device/channel | TCP	   |
+| infoResponse 		    | A response to an infoRequest 						             | TCP     |
+| errorResponse       | A message containing an error						             | TCP     |
+| subscribeRequest    | A message subscribing to a certain channel           | TCP     |
+| unsubscribeRequest  | A message unsubscribing from a certain channel       | TCP     |
+| endResponse         | A message saying that the device had no response     | TCP     |
 
 ### Message Usage
 - **parameterCommand**: Change gain, pad, phantom power, etc.
 - **statusUpdate**: Automatic notifications when parameters change (or after a statusRequest)
 - **statusRequest**: To request a status update
 - **channelLink**: When first connecting to a device
+- **channelUnlink**: In case a mistake was made or dante subscriptions changed
 - **infoRequest**: To get what parameters a channel has
 - **infoResponse**: To answer an infoRequest
 - **errorResponse**: To tell a device an error has occurred
 - **subscribeMessage**: This isn't intended to be used by actual devices. You should instead [link channels](#linking-channels). This is meant for a dante-controller type app
+- **unsubscribeMessage**: This isn't intended to be used by actual devices. You should instead [link channels](#linking-channels). This is meant for a dante-controller type app
+- **endResponse**: When you don't have a response
 
 
 # Channel Types
@@ -77,7 +89,28 @@ Aux channels can only be linked to another device. Only the device can initiate 
 
 # Parameters
 
-Virgil supports various audio parameters. Only `gain` is mandatory for all channels involving a preamp, even on fixed-gain preamps.
+Virgil supports various audio parameters. `gain` is mandatory for all channels involving a preamp, even on fixed-gain preamps.
+
+There is also a `linkedChannels` parameter. This is to be treated as all other parameter, but it is mandatory.  
+It is an array containing information on what channels are linked to said channel.  
+This is an array to account for tx channels being able to be connected to several rx channels in dante.  
+`linkedChannels` should start empty and be added to as channels are linked/unlinked
+
+
+```jsonc
+"linkedChannels" : [
+  {
+    "deviceName" : "connectedDeviceName",
+    "channelIndex" : 0, // The connected channel index
+    "channelType" : "rx"
+  }
+  {
+    "deviceName" : "otherConnectedDevice",
+    "channelIndex" : 1, // The connected channel index
+    "channelType" : "rx"
+  }
+]
+```
 
 ### Parameter Structure
 
@@ -169,7 +202,7 @@ Example:
 "pad" : {
   "dataType" : "bool",
   "value" : false,
-  "readOnly" : false,
+  "readOnly" : false
 }
 ``` 
 
@@ -186,7 +219,7 @@ Example:
   "dataType" : "number",
   "unit": "dB",
   "value" : -10,
-  "readOnly" : true,
+  "readOnly" : true
 }
 ``` 
 
@@ -209,7 +242,7 @@ Example:
   "maxValue" : 150,
   "precision" : 1,
   "value" : 100,
-  "readOnly" : false,
+  "readOnly" : false
 }
 ``` 
 
@@ -224,7 +257,7 @@ Example:
 "lowcutEnable" : {
   "dataType" : "bool",
   "value" : true,
-  "readOnly" : false,
+  "readOnly" : false
 }
 ``` 
 
@@ -238,7 +271,7 @@ Example:
 "polarity" : {
   "dataType" : "bool",
   "value" : true,
-  "readOnly" : false,
+  "readOnly" : false
 }
 ``` 
 
@@ -252,7 +285,7 @@ Example:
 "phantomPower" : {
   "dataType" : "bool",
   "value" : false,
-  "readOnly" : false,
+  "readOnly" : false
 }
 ``` 
 
@@ -266,7 +299,7 @@ Example:
 "rfEnable" : {
   "dataType" : "bool",
   "value" : true,
-  "readOnly" : false,
+  "readOnly" : false
 }
 ``` 
 
@@ -281,8 +314,8 @@ Example:
 "transmitPower" : {
   "dataType" : "enum",
   "enumValues" : ["low", "medium", "high"],
-  "value" : true,
-  "readOnly" : false,
+  "value" : "low",
+  "readOnly" : false
 }
 ``` 
 
@@ -295,7 +328,7 @@ Example with percentage:
   "maxValue": 100,
   "precision": 1,
   "value" : 100,
-  "readOnly" : false,
+  "readOnly" : false
 }
 ``` 
 
@@ -316,7 +349,7 @@ Example:
   "maxValue": 50,
   "precision": 1,
   "value" : 40,
-  "readOnly" : false,
+  "readOnly" : false
 }
 ``` 
 
@@ -329,23 +362,23 @@ Example with percentage:
   "maxValue": 100,
   "precision": 1,
   "value" : 100,
-  "readOnly" : false,
+  "readOnly" : false
 }
 ``` 
 
 ### Status Parameters (Read-Only)
 
-#### transmitterConnected
-Wireless transmitter connection status
+#### deviceConnected
+Wireless device connection status
 - **dataType**: bool
 - **readOnly**: Always true (read-only)
 
 Example:
 ```jsonc
-"transmitterConnected" : {
+"deviceConnected" : {
   "dataType" : "bool",
   "value" : false,
-  "readOnly" : true,
+  "readOnly" : true
 }
 ``` 
 
@@ -360,7 +393,7 @@ Example:
 "subDevice" : {
   "dataType" : "string",
   "value" : "handheld",
-  "readOnly" : true,
+  "readOnly" : true
 }
 ``` 
 
@@ -375,13 +408,15 @@ Audio signal level
 - **readOnly**: Always true (read-only)
 - **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
 
+audioLevel can be for tx or rx.
+
 Example:
 ```jsonc
 "audioLevel" : {
   "dataType" : "number",
   "unit" : "dBFS",
   "value" : -18,
-  "readOnly" : true,
+  "readOnly" : true
 }
 ``` 
 
@@ -398,7 +433,7 @@ Example:
   "dataType" : "number",
   "unit" : "dB",
   "value" : 40,
-  "readOnly" : true,
+  "readOnly" : true
 }
 ``` 
 
@@ -408,7 +443,7 @@ Example with percentage:
   "dataType" : "number",
   "unit" : "%",
   "value" : 100,
-  "readOnly" : true,
+  "readOnly" : true
 }
 ``` 
 
@@ -425,7 +460,7 @@ Example:
   "dataType" : "number",
   "unit" : "%",
   "value" : 40,
-  "readOnly" : true,
+  "readOnly" : true
 }
 ``` 
 
@@ -444,13 +479,6 @@ Example:
   ]
 }
 ```
-
-
----
-
-
-
----
 
 # Device Information
 

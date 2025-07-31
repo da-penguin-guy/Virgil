@@ -3,10 +3,21 @@
     "messages" :
     [
         {
-            "messageType" : "infoRequest", // Indicates this is a info request
+            "messageType" : "infoResponse", // Indicates this is a info response
             "channelIndex" : 1, // The index of the channel being requested
             "channelType" : "tx", // Type of channel (tx, rx, or aux)
-
+            "connectedChannels": [
+                {
+                    "deviceName": "ConnectedDevice1",
+                    "channelIndex": 0,
+                    "channelType": "rx"
+                },
+                {
+                    "deviceName": "ConnectedDevice2",
+                    "channelIndex": 1,
+                    "channelType": "rx"
+                }
+            ],
             "gain" : {
                 "unit" : "dB",
                 "dataType" : "number",

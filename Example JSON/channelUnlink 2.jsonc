@@ -1,0 +1,12 @@
+{
+    "transmittingDevice": "DanteDeviceName", // The device sending the command
+    "messages" :
+    [
+        {
+            "messageType" : "channelUnlink", // Indicates this is a channel unlink
+
+            "channelIndex" : 0, // The index of the channel of the receiver
+            "channelType" : "aux", // If it's an aux channel, it should be assigned to the sending device, not a specific channel
+        }
+    ]
+}
