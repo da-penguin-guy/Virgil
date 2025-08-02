@@ -79,5 +79,6 @@
         "xtree": "cpp",
         "xutility": "cpp"
     },
-    "cmake.sourceDirectory": "C:/Users/robot/OneDrive/Desktop/Virgil/Master_Example"
+    "cmake.sourceDirectory": "C:/Users/robot/OneDrive/Desktop/Virgil/Master_Example",
+    "python-envs.pythonProjects": []
 }

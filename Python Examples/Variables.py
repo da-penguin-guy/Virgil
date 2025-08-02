@@ -1,19 +1,53 @@
 from socket import socket
+import socket
 import threading
 import time
 import json
 
+virgilPort = 7889
+
+# Global variables for device identity
+selfName = None
+selfModel = None
+selfType = None
+
 class DeviceConnection:
-    def __init__(self, connectedDevice: str, deviceIp: str, channelIndex: int, channelType: str, selfIndex: int = None, selfType: str = None):
-        self.connected = None
+    def __init__(self, connectedDevice: str, selfIndex: int, selfType: str, channelIndex: int = None, channelType: str = None):
         self.connectedDevice = connectedDevice
-        self.deviceIp = deviceIp
         self.channelIndex = channelIndex
         self.channelType = channelType
         self.selfIndex = selfIndex
         self.selfType = selfType
+        AddSubscription(connectedDevice, selfIndex, selfType)
 
+    def CheckForRemove(self, connectedDevice: str, channelIndex: int, channelType: str, selfIndex: int, selfType: str):
+        if(self.connectedDevice == connectedDevice and
+                self.channelIndex == channelIndex and
+                self.channelType == channelType and
+                self.selfIndex == selfIndex and
+                self.selfType == selfType):
+            self.Remove()
 
+    def Remove(self):
+        """
+        Remove this connection from the subscriptions.
+        """
+        RemoveSubscription(self.connectedDevice, self.selfIndex, self.selfType)
+        connections.pop(self)
+
+def AddSubscription(connectedDevice: str, selfIndex: int = None, selfType: str = None):
+    key = (selfIndex, selfType)
+    if key not in subscriptionList:
+        subscriptionList[key] = []
+    if connectedDevice not in subscriptionList[key]:
+        subscriptionList[key].append(connectedDevice)
+
+def RemoveSubscription(connectedDevice: str, selfIndex: int = None, selfType: str = None):
+    key = (selfIndex, selfType)
+    if key in subscriptionList and connectedDevice in subscriptionList[key]:
+        subscriptionList[key].remove(connectedDevice)
+
+    
 class DeviceInfo:
     name = ""
     model = ""
@@ -21,16 +55,16 @@ class DeviceInfo:
     deviceIp = ""
     virgilVersion = ""
     channelCounts : dict[str, int] = {}
-    channels : dict[int, dict] = {}
+    channels : dict[tuple[int,str], dict] = {}
     isVirgilDevice : bool = None
     ongoingCommunication : bool = False
     conn : socket.socket = None
     messageQueue : list[dict] = []
     disabled = False
 
-    def __init__(self, deviceName: str, ip: str, selfInit: bool = False, queue: list[dict] = []):
-        # Start the connection logic in a new thread
-        thread = threading.Thread(target=self.Run, args=(deviceName, ip, queue, selfInit), daemon=True)
+
+    def __init__(self, deviceName: str, ip: str, conn : socket.socket = None, startingMessage: bytes = None, queue: list[dict] = []):
+        thread = threading.Thread(target=self.Run, args=(deviceName, ip, queue, conn, startingMessage), daemon=True)
         thread.start()
 
     def SendMessage(self, messages : dict):
@@ -60,7 +94,7 @@ class DeviceInfo:
             print("Message does not contain 'messages'.")
             return CreateError("MalformedMessage", "The JSON received is missing 'messages'.")
         returnMessages: list[dict] = []
-        
+        self.ongoingCommunication = True
         for msg in packet["messages"]:
             if not isinstance(msg, dict) or not msg:
                 print("Invalid message format.")
@@ -73,41 +107,91 @@ class DeviceInfo:
                 continue
             msgType = msg["messageType"]
 
-            self.ongoingCommunication = True
 
             if msgType == "parameterCommand":
-                raise NotImplementedError()
+                if "channelIndex" not in msg or "channelType" not in msg:
+                    print("Parameter command message missing 'channelIndex' or 'channelType'.")
+                    returnMessages.append(CreateError("MalformedMessage", "Parameter command message missing 'channelIndex' or 'channelType'."))
+                    continue
+                channelIndex = msg.pop("channelIndex")
+                channelType = msg.pop("channelType")
+                msg.pop("messageType")
+                for key,value in msg.items():
+                    returnMessages.append(ProcessParamChange(channelIndex, channelType, key, value))
+                
+                response = SendStatusUpdate(channelIndex, channelType, name, list(msg.keys()))
+                returnMessages.append(response)
             
             elif msgType == "statusUpdate":
-                if name in devices:
-                    self.Update(ip, msg)
+                returnMessages.extend(self.Update(ip, msg))
 
             elif msgType == "statusRequest":
-                raise NotImplementedError()
+                if "channelIndex" not in msg or "channelType" not in msg:
+                    print("Status request message missing 'channelIndex' or 'channelType'.")
+                    returnMessages.append(CreateError("MalformedMessage", "Status request message missing 'channelIndex' or 'channelType'."))
+                    continue
+                returnMessages.append(CreateStatusUpdate(msg["channelIndex"], msg["channelType"]))
             
             elif msgType == "channelLink":
-                raise NotImplementedError()
+                if "channelIndex" not in msg or "channelType" not in msg:
+                    print("Channel link message missing 'channelIndex' or 'channelType'.")
+                    returnMessages.append(CreateError("MalformedMessage", "Channel link message missing 'channelIndex' or 'channelType'."))
+                    continue
+                connections.append(DeviceConnection(
+                    connectedDevice=name,
+                    channelIndex=msg.get("selfIndex", None),
+                    channelType=msg.get("selfType", None),
+                    selfIndex=msg["channelIndex"],
+                    selfType=msg["channelType"],
+                    deviceIp=ip
+                ))
             
             elif msgType == "channelUnlink":
-                raise NotImplementedError()
-            
+                if "channelIndex" not in msg or "channelType" not in msg:
+                    print("Channel unlink message missing 'channelIndex' or 'channelType'.")
+                    returnMessages.append(CreateError("MalformedMessage", "Channel unlink message missing 'channelIndex' or 'channelType'."))
+                    continue
+                for conn in connections:
+                    conn.CheckForRemove(
+                        connectedDevice=name,
+                        channelIndex=msg.get("selfIndex", None),
+                        channelType=msg.get("selfType", None),
+                        selfIndex=msg["channelIndex"],
+                        selfType=msg["channelType"],
+                    )
+
             elif msgType == "infoRequest":
-                raise NotImplementedError()
-            
+                if "channelIndex" not in msg or "channelType" not in msg:
+                    print("Info request message missing 'channelIndex' or 'channelType'.")
+                    returnMessages.append(CreateError("MalformedMessage", "Info request message missing 'channelIndex' or 'channelType'."))
+                    continue
+                returnMessages.append(CreateInfoResponse(msg["channelIndex"], msg["channelType"]))
+
             elif msgType == "infoResponse":
-                self.Update(ip, msg)
+                returnMessages.extend(self.Update(ip, msg))
 
             elif msgType == "errorResponse":
                 print(f"Error response received: {msg.get('error', {}).get('errorString', 'Unknown error')}")
             
             elif msgType == "subscribeMessage":
-                raise NotImplementedError()
+                if "channelIndex" not in msg or "channelType" not in msg:
+                    print("Subscribe message missing 'channelIndex' or 'channelType'.")
+                    returnMessages.append(CreateError("MalformedMessage", "Subscribe message missing 'channelIndex' or 'channelType'."))
+                    continue
+                AddSubscription(name, msg["channelIndex"], msg["channelType"])
             
             elif msgType == "unsubscribeMessage":
-                raise NotImplementedError()
-            
+                if "channelIndex" not in msg or "channelType" not in msg:
+                    print("Unsubscribe message missing 'channelIndex' or 'channelType'.")
+                    returnMessages.append(CreateError("MalformedMessage", "Unsubscribe message missing 'channelIndex' or 'channelType'."))
+                    continue
+                RemoveSubscription(name, msg["channelIndex"], msg["channelType"])
+
             elif msgType == "endResponse":
                 self.ongoingCommunication = False
+                if self.messageQueue:
+                    self.ongoingCommunication = True
+                    return (self.messageQueue.pop(0))
                 return None
 
             else:
@@ -116,30 +200,48 @@ class DeviceInfo:
                 continue
     
         if not returnMessages:
+            if self.messageQueue:
+                self.ongoingCommunication = True
+                return (self.messageQueue.pop(0))
             self.ongoingCommunication = False
             return CreateEndResponse()
         return returnMessages
 
-    def Run(self, deviceName: str, ip: str, queue: list[dict], selfInit: bool):
-        self.conn = socket()
+    def Run(self, deviceName: str, ip: str, queue: list[dict], conn: socket.socket = None, startingMessage: bytes = None):
+        self.conn = conn
         self.deviceName = deviceName
         self.deviceIp = ip
         self.messageQueue = queue
         try:
-            self.conn.connect((self.deviceIp, virgilPort))
+            if not self.conn:
+                self.conn = socket()
+                self.conn.connect((self.deviceIp, virgilPort))
+            self.conn.settimeout(2.0)  # 2 second timeout
             self.isVirgilDevice = True
         except Exception as e:
             self.isVirgilDevice = False
             return
-        if selfInit and self.messageQueue:
+        if startingMessage:
+            try:
+                response = self.ProcessMessage(startingMessage, self.deviceIp)
+                if response:
+                    self.SendMessage(response)
+            except Exception as e:
+                print(f"Error processing starting message: {e}")
+                return
+        elif self.messageQueue:
             self.ongoingCommunication = True
             self.SendMessage(self.messageQueue.pop(0))
         while not self.disabled:
             try:
-                if not self.ongoingCommunication and self.messageQueue:
-                    self.ongoingCommunication = True
-                    self.SendMessage(self.messageQueue.pop(0))
-                data = self.conn.recv(4096)
+                try:
+                    data = self.conn.recv(4096)
+                except TimeoutError:
+                    continue
+                except OSError as e:
+                    if getattr(e, 'errno', None) == 10060:  # Windows timeout
+                        continue
+                    raise
                 if not data:
                     print(f"Connection closed by remote device {self.deviceIp}")
                     self.End()
@@ -152,9 +254,29 @@ class DeviceInfo:
                     print(f"Error receiving data from {self.deviceIp}: {e}")
                 continue
 
-    def Update(self, infoResponse: dict):
+    def Update(self, ip: str, infoResponse: dict) -> list[dict]:
+        # Always trust the latest IP address
+        self.deviceIp = ip
+        errors : list[dict] = []
+        if "channelIndex" not in infoResponse:
+            errors.append(CreateError("MalformedMessage", "Info response missing 'channelIndex'."))
+            return errors
+        if "channelType" not in infoResponse:
+            errors.append(CreateError("MalformedMessage", "Info response missing 'channelType'."))
+            return errors
         channelIndex = infoResponse["channelIndex"]
+        channelType = infoResponse["channelType"]
         if channelIndex == -1:
+            if "deviceModel" not in infoResponse:
+                errors.append(CreateError("MalformedMessage", "Info response missing 'deviceModel'."))
+            if "deviceType" not in infoResponse:
+                errors.append(CreateError("MalformedMessage", "Info response missing 'deviceType'."))
+            if "virgilVersion" not in infoResponse:
+                errors.append(CreateError("MalformedMessage", "Info response missing 'virgilVersion'."))
+            if "channelCounts" not in infoResponse:
+                errors.append(CreateError("MalformedMessage", "Info response missing 'channelCounts'."))
+            if errors:
+                return errors
             self.deviceModel = infoResponse["deviceModel"]
             self.deviceType = infoResponse["deviceType"]
             self.virgilVersion = infoResponse["virgilVersion"]
@@ -163,9 +285,11 @@ class DeviceInfo:
         infoResponse.pop("channelIndex")
         infoResponse.pop("channelType")
         infoResponse.pop("messageType")
-        if channelIndex not in self.channels:
-            self.channels[channelIndex] = {}
-        self.channels[channelIndex].update(infoResponse)
+        if (channelIndex,channelType) not in self.channels:
+            self.channels[(channelIndex,channelType)] = {}
+        self.channels[(channelIndex,channelType)].update(infoResponse)
+        return None
+
 
     def End(self):
         """
@@ -175,6 +299,9 @@ class DeviceInfo:
             self.conn.close()
             self.conn = None
         self.disabled = True
+        for conn in connections:
+            if conn.connectedDevice == self.deviceName:
+                conn.Remove()
         devices.pop(self.deviceName)
 
 def GetIp():
@@ -187,7 +314,6 @@ def GetIp():
     finally:
         s.close()
     return ip
-
 
 def CreateBase(messages) -> dict:
     """
@@ -241,6 +367,35 @@ def CreateInfoRequest(channelIndex : int, channelType : str = "") -> dict:
             "channelType": channelType
         }
     
+def CreateInfoResponse(channelIndex : int, channelType : str = "") -> dict:
+    """
+    Create an info response message.
+    """
+    response : dict = {"messageType": "infoResponse"}
+    key = (channelIndex, channelType)
+    if key not in channels:
+        return CreateError("ChannelIndexInvalid", f"Channel index {channelIndex} out of range for {channelType} channels.")
+    response.update(channels[key])
+    return response
+
+def CreateStatusUpdate(channelIndex: int, channelType: str = "", params : list[str] = None) -> dict:
+    """
+    Create a status update message.
+    """
+    #This doesn't account for things other then the values being changed, but it should be fine for now
+    if (channelIndex, channelType) not in channels:
+        return CreateError("ChannelIndexInvalid", f"Channel index {channelIndex} out of range for {channelType} channels.")
+    response :dict = {"messageType": "statusUpdate", "channelIndex": channelIndex, "channelType": channelType}
+    for key, value in channels[(channelIndex, channelType)].items():
+        if key == "channelIndex" or key == "channelType":
+            continue
+        if key in params or not params:
+            if isinstance(value, dict):
+                response[key] = value.get("value", None)
+            else:
+                response[key] = value
+    return response
+
 def CreateEndResponse() -> dict:
     """
     Create an end response message.
@@ -249,239 +404,96 @@ def CreateEndResponse() -> dict:
         "messageType": "endResponse",
     }
 
+def ProcessParamChange(channelIndex: int, channelType: str, paramName: str, value: any) -> dict:
+    """
+    Process a parameter change message.
+    """
+
+    key = (channelIndex, channelType)
+    if key not in channels:
+        return CreateError("ChannelIndexInvalid", f"Channel index {channelIndex} out of range for {channelType} channels.")
+    if paramName not in channels[key]:
+        return CreateError("ParameterUnsupported", f"Channel {channelIndex} of type {channelType} does not have a parameter named {paramName}.")
+    if channels[key][paramName]["readOnly"]:
+        return CreateError("ParameterReadOnly", f"Parameter {paramName} is read-only and cannot be changed.")
+    
+    dataType = channels[key][paramName]["dataType"]
+    if dataType == "number":
+        if not isinstance(value, (int, float)):
+            return CreateError("InvalidValueType", f"Parameter {paramName} must be a number.")
+        minValue = channels[key][paramName].get("minValue", float('-inf'))
+        maxValue = channels[key][paramName].get("maxValue", float('inf'))
+        precision = channels[key][paramName].get("precision", 1.0)
+        isValid = (value - minValue) % precision and value > minValue and value < maxValue
+        if not isValid:
+            return CreateError("ValueOutOfRange", f"Parameter {paramName} must be a number between {minValue} and {maxValue} with precision {precision}.")
+    elif dataType == "bool":
+        if not isinstance(value, bool):
+            return CreateError("InvalidValueType", f"Parameter {paramName} must be a boolean.")
+    elif dataType == "string":
+        if not isinstance(value, str):
+            return CreateError("InvalidValueType", f"Parameter {paramName} must be a string.")
+    elif dataType == "enum":
+        if value not in channels[key][paramName]["enumValues"]:
+            return CreateError("InvalidValueType", f"Parameter {paramName} must be one of {channels[key][paramName]['enumValues']}.")
+    else:
+        return CreateError("InternalError", f"Parameter {paramName} has an unsupported data type: {dataType}.")
+
+    channels[key][paramName]["value"] = value
+    return []
+
+def SendStatusUpdate(channelIndex: int, channelType: str, exclude : str, params: list[str]) -> dict:
+    """
+    Send a status update message.
+    """
+    response = CreateStatusUpdate(channelIndex, channelType, params)
+    
+    # Send to all subscribed devices except the one specified
+    for name in subscriptionList.get((channelIndex, channelType), []):
+        if name != exclude:
+            try:
+                device = devices[name]
+                if device.isVirgilDevice and device.conn:
+                    device.messageQueue.append(response)
+            except Exception as e:
+                print(f"Error sending message to device {name}: {e}")
+    return response
+
+def LoadConfig(filepath: str):
+    """
+    Load the channel configuration.
+    """
+    global selfName, selfModel, selfType
+    with open(filepath, 'r') as f:
+        config = json.load(f)
+    selfName = config["Name"]
+    selfModel = config["Model"]
+    selfType = config["Type"]
+    for channel in config.get("Channels", []):
+        channelIndex = channel["channelIndex"]
+        channelType = channel["channelType"]
+        channels[(channelIndex, channelType)] = channel
+    for conn in config.get("Connections", []):
+        connections.append(DeviceConnection(
+            connectedDevice = conn["name"],
+            selfIndex = conn["selfIndex"],
+            selfType = conn["selfType"],
+            channelIndex = conn.get("channelIndex", None),
+            channelType = conn.get("channelType", None)
+        ))
 
 
 #If this channel setup makes no sense, it's because it's a spectera 2x2 setup, which is the most complicated setup I could think of.
-txChannels : list[dict] = [
-    {
-        "channelIndex" : 0,
-        "channelType" : "tx",
-        "linkedChannels" : [],
-        "gain" : {
-            "unit" : "dB",
-            "dataType" : "number",
-            "minValue" : -10,
-            "maxValue" : 50,
-            "value" : 10,
-            "precision" : 0.1,
-            "readOnly" : False 
-        },
-        "rfEnable" : {
-            "dataType" : "bool",
-            "value" : True,
-            "readOnly" : False
-        },
-        "squelch" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "minValue": 0,
-            "maxValue": 100,
-            "precision": 1,
-            "value" : 100,
-            "readOnly" : False
-        },
-        "deviceConnected" : {
-            "dataType" : "bool",
-            "value" : False,
-            "readOnly" : True
-        },
-        "subDevice" : {
-            "dataType" : "string",
-            "value" : "disconnected",
-            "readOnly" : True
-        },
-        "audioLevel" : {
-            "dataType" : "number",
-            "unit" : "dBFS",
-            "value" : -256, # This is just a really low value to indicate no audio
-            "readOnly" : True
-        },
-        "rfLevel" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "value" : 50,
-            "readOnly" : True
-        },
-        "batteryLevel" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "value" : 100,
-            "readOnly" : True
-        }
-    },
-    {
-        "channelIndex" : 1,
-        "channelType" : "tx",
-        "linkedChannels" : [],
-        "gain" : {
-            "unit" : "dB",
-            "dataType" : "number",
-            "minValue" : -10,
-            "maxValue" : 50,
-            "value" : 10,
-            "precision" : 0.1,
-            "readOnly" : False 
-        },
-        "rfEnable" : {
-            "dataType" : "bool",
-            "value" : True,
-            "readOnly" : False
-        },
-        "squelch" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "minValue": 0,
-            "maxValue": 100,
-            "precision": 1,
-            "value" : 100,
-            "readOnly" : False
-        },
-        "deviceConnected" : {
-            "dataType" : "bool",
-            "value" : False,
-            "readOnly" : True
-        },
-        "subDevice" : {
-            "dataType" : "string",
-            "value" : "disconnected",
-            "readOnly" : True
-        },
-        "audioLevel" : {
-            "dataType" : "number",
-            "unit" : "dBFS",
-            "value" : -256, # This is just a really low value to indicate no audio
-            "readOnly" : True
-        },
-        "rfLevel" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "value" : 50,
-            "readOnly" : True
-        },
-        "batteryLevel" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "value" : 100,
-            "readOnly" : True
-        }
-    },
-]
-rxChannels : list[dict] = [
-    {
-        "channelIndex" : 0,
-        "channelType" : "rx",
-        "linkedChannels" : [],
-        "rfEnable" : {
-            "dataType" : "bool",
-            "value" : True,
-            "readOnly" : False
-        },
-        "deviceConnected" : {
-            "dataType" : "bool",
-            "value" : False,
-            "readOnly" : True
-        },
-        "subDevice" : {
-            "dataType" : "string",
-            "value" : "disconnected",
-            "readOnly" : True
-        },
-        "transmitPower" : {
-            "dataType" : "enum",
-            "enumValues" : ["low", "medium", "high"],
-            "value" : "low",
-            "readOnly" : False
-        },
-        "audioLevel" : {
-            "dataType" : "number",
-            "unit" : "dBFS",
-            "value" : -256, # This is just a really low value to indicate no audio
-            "readOnly" : True
-        },
-        "rfLevel" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "value" : 50,
-            "readOnly" : True
-        },
-        "batteryLevel" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "value" : 100,
-            "readOnly" : True
-        }
-    },
-    {
-        "channelIndex" : 0,
-        "channelType" : "rx",
-        "linkedChannels" : [],
-        "rfEnable" : {
-            "dataType" : "bool",
-            "value" : True,
-            "readOnly" : False
-        },
-        "deviceConnected" : {
-            "dataType" : "bool",
-            "value" : False,
-            "readOnly" : True
-        },
-        "subDevice" : {
-            "dataType" : "string",
-            "value" : "disconnected",
-            "readOnly" : True
-        },
-        "transmitPower" : {
-            "dataType" : "enum",
-            "enumValues" : ["low", "medium", "high"],
-            "value" : "low",
-            "readOnly" : False
-        },
-        "audioLevel" : {
-            "dataType" : "number",
-            "unit" : "dBFS",
-            "value" : -256, # This is just a really low value to indicate no audio
-            "readOnly" : True
-        },
-        "rfLevel" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "value" : 50,
-            "readOnly" : True
-        },
-        "batteryLevel" : {
-            "dataType" : "number",
-            "unit" : "%",
-            "value" : 100,
-            "readOnly" : True
-        }
-    }
-]
-auxChannels : list[dict] = [
-]
+channels : dict[tuple[int,str],dict] = {
+}
 
 #This only has rx connections because that's all the dante device will know
 #These IPs would be found using Dante discovery
 connections : list[DeviceConnection]= [
-    DeviceConnection("device1", "192.168.1.2", 0, "tx", 0, "rx"),
-    DeviceConnection("device1", "192.168.1.2", 1, "tx", 1, "rx")
 ]
 
 devices : dict[str, DeviceInfo] = {
 }
 
-txSubscribe : dict[int, list[str]] = {
-    0: [],
-    1: [],
+subscriptionList : dict[(int,str), list[str]] = {
 }
-rxSubscribe : dict[int, list[str]] = {
-    0: [],
-    1: [],
-}
-auxSubscribe : dict[int, list[str]] = {
-}
-
-
-virgilPort = 7889
-selfName = "ExampleDevice"
-selfModel = "ExampleModel"
-selfType = "digitalStageBox"

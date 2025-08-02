@@ -520,7 +520,7 @@ In case 3, the status update should be sent to the ip address that requested it
 - `UnableToChangeValue`: Parameter cannot be modified currently
 - `DeviceNotFound`: Target device not available
 - `ChannelIndexInvalid`: Channel does not exist
-- `ParameterLocked`: Parameter is read-only or disabled
+- `ParameterReadOnly`: Parameter is read-only or disabled
 - `ParameterUnsupported`: Parameter not supported by device
 - `MalformedMessage`: Invalid JSON or message structure
 - `Busy`: Device cannot process request currently
