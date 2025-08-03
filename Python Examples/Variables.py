@@ -89,8 +89,8 @@ class DeviceInfo:
         if "transmittingDevice" not in packet or not isinstance(packet["transmittingDevice"], str) or not packet["transmittingDevice"]:
             print("Message does not contain 'transmittingDevice'.")
             return CreateError("MalformedMessage", "The JSON received is missing 'transmittingDevice'.")
-        if packet["transmittingDevice"] != selfName:
-            print(f"Message from {packet['transmittingDevice']} is not for this device.")
+        if packet["transmittingDevice"] != self.deviceName:
+            print(f"Message from {packet['transmittingDevice']} received packet not for it")
             return CreateError("InternalError", f"Device Name mismatch: {packet['transmittingDevice']} != {selfName}")
         name = packet.get("transmittingDevice", "")
         if "messages" not in packet or not isinstance(packet["messages"], list) or not packet["messages"]:
