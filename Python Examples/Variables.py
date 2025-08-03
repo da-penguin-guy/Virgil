@@ -216,18 +216,20 @@ class DeviceInfo:
         print(f"Device {self.deviceName} is {'connected' if self.conn else 'not connected'}.")
         try:
             if not self.conn:
-                self.conn = socket()
+                self.conn = socket.socket()
                 self.conn.connect((self.deviceIp, virgilPort))
             self.conn.settimeout(2.0)  # 2 second timeout
             self.isVirgilDevice = True
+            print("Device Connected")
         except Exception as e:
             self.isVirgilDevice = False
+            print(f"Failed to connect to device {self.deviceName} at {self.deviceIp}: {e}")
             return
         if startingMessage:
             try:
                 response = self.ProcessMessage(startingMessage, self.deviceIp)
                 if response:
-                    self.SendMessage(response)
+                    self.SendMessage(CreateBase(response))
             except Exception as e:
                 print(f"Error processing starting message: {e}")
                 return
@@ -291,7 +293,6 @@ class DeviceInfo:
             self.channels[(channelIndex,channelType)] = {}
         self.channels[(channelIndex,channelType)].update(infoResponse)
         return None
-
 
     def End(self):
         """

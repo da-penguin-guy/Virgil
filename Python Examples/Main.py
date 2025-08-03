@@ -46,7 +46,7 @@ class MDNSListener:
                     if conn.connectedDevice not in Variables.devices:
                         Variables.devices[conn.connectedDevice] = Variables.DeviceInfo(
                             conn.connectedDevice, 
-                            str(info.addresses[0]), 
+                            socket.inet_ntoa(info.addresses[0]), 
                             queue=[
                                 Variables.CreateBase(Variables.CreateInfoRequest(-1, conn.channelType)),
                                 Variables.CreateBase(Variables.CreateInfoRequest(conn.channelIndex, conn.channelType)),
