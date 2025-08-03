@@ -22,8 +22,8 @@ Virgil uses a typical mDNS configuration. It is advertised over `224.0.0.251` at
 The protocol will (almost) fully function on a network that doesn't support mDNS. mDNS is only used for a dante controller like app and detecting accessories 
 
 ### Service Configuration
-- **serviceType**: `_virgil._udp.local.`
-- **serviceName**: `{dante name}._virgil._udp.local.`
+- **serviceType**: `_virgil._tcp_.local.`
+- **serviceName**: `{dante name}._virgil._tcp_.local.`
 - **txt**
   + **model**: The model of the device (eg. M32)
   + **deviceType**: The type of device it is. For more information and allowed values, go to [Device Types](#device-types)
