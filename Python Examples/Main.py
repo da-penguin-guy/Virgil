@@ -48,7 +48,7 @@ class MDNSListener:
                             conn.connectedDevice, 
                             socket.inet_ntoa(info.addresses[0]), 
                             queue=[
-                                Variables.CreateBase(Variables.CreateInfoRequest(-1, conn.channelType)),
+                                Variables.CreateBase(Variables.CreateInfoRequest(-1)),
                                 Variables.CreateBase(Variables.CreateInfoRequest(conn.channelIndex, conn.channelType)),
                                 Variables.CreateBase(Variables.CreateChannelLink(conn.selfIndex, conn.selfType, conn.channelIndex, conn.channelType))
                             ]

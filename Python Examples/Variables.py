@@ -238,7 +238,7 @@ class DeviceInfo:
                 return
         elif self.messageQueue:
             self.ongoingCommunication = True
-            self.SendMessage(CreateBase(self.messageQueue.pop(0)))
+            self.SendMessage(self.messageQueue.pop(0))
         while not self.disabled:
             try:
                 try:
@@ -338,7 +338,7 @@ def CreateError(errorValue : str, errorString : str) -> dict:
     Create an error message.
     """
     return {
-        "messageType" : "ErrorResponse",
+        "messageType" : "errorResponse",
         "errorValue" : errorValue,
         "errorString" : errorString
     }
