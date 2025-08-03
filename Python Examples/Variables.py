@@ -72,7 +72,9 @@ class DeviceInfo:
         Send a JSON object to the specified IP using TCP.
         """
         # Send via TCP
-        self.conn.sendall(json.dumps(messages).encode('utf-8'))
+        jsonInfo = json.dumps(messages)
+        print(f"Sending message to {self.deviceIp}: \n {jsonInfo}")
+        self.conn.sendall(jsonInfo.encode('utf-8'))
 
 
     def ProcessMessage(self, raw : bytes, ip : str):
@@ -83,6 +85,7 @@ class DeviceInfo:
         except json.JSONDecodeError:
             print(f"Failed to decode JSON from {ip}: {raw}")
             return CreateError("MalformedMessage", "The JSON received is malformed.")
+        print(f"Received message from {ip}: \n {raw.decode('utf-8')}")
         if "transmittingDevice" not in packet or not isinstance(packet["transmittingDevice"], str) or not packet["transmittingDevice"]:
             print("Message does not contain 'transmittingDevice'.")
             return CreateError("MalformedMessage", "The JSON received is missing 'transmittingDevice'.")
@@ -235,7 +238,7 @@ class DeviceInfo:
                 return
         elif self.messageQueue:
             self.ongoingCommunication = True
-            self.SendMessage(self.messageQueue.pop(0))
+            self.SendMessage(CreateBase(self.messageQueue.pop(0)))
         while not self.disabled:
             try:
                 try:
