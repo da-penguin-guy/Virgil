@@ -212,6 +212,8 @@ class DeviceInfo:
         self.deviceName = deviceName
         self.deviceIp = ip
         self.messageQueue = queue
+        print(f"Device {self.deviceName} started with IP {self.deviceIp}.")
+        print(f"Device {self.deviceName} is {'connected' if self.conn else 'not connected'}.")
         try:
             if not self.conn:
                 self.conn = socket()

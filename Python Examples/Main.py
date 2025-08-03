@@ -34,11 +34,15 @@ class MDNSListener:
 
     def add_service(self, zeroconf, type, name):
         info = zeroconf.get_service_info(type, name)
-        if info and Variables.selfName in name:
+        # Extract the base name of the service to compare with selfName
+        base_name = name.split('.')[0]  # Assuming the name format is "<base_name>.<type>"
+        if info and base_name != Variables.selfName:
             if name not in found_devices:
-                found_devices.append(name)
-                print(f"Found device: {name}")
+                found_devices.append(base_name)
+                print(f"Found device: {base_name}")
                 for conn in Variables.connections:
+                    if conn.connectedDevice != base_name:
+                        continue
                     if conn.connectedDevice not in Variables.devices:
                         Variables.devices[conn.connectedDevice] = Variables.DeviceInfo(
                             conn.connectedDevice, 
@@ -233,7 +237,7 @@ try:
     app.exec()
 except KeyboardInterrupt:
     print("Shutting down...")
-        
+
 
 
 
