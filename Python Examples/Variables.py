@@ -255,7 +255,7 @@ class DeviceInfo:
                 response = self.ProcessMessage(data, self.deviceIp)
                 if not response:
                     continue
-                self.SendMessage(response)
+                self.SendMessage(CreateBase(response))
             except Exception as e:
                 if not self.disabled:
                     print(f"Error receiving data from {self.deviceIp}: {e}")
@@ -338,11 +338,9 @@ def CreateError(errorValue : str, errorString : str) -> dict:
     Create an error message.
     """
     return {
-        "error": {
-            "messageType" : "ErrorResponse",
-            "errorValue" : errorValue,
-            "errorString" : errorString
-        }
+        "messageType" : "ErrorResponse",
+        "errorValue" : errorValue,
+        "errorString" : errorString
     }
 
 def CreateChannelLink(selfIndex :int, selfType : str, channelIndex : int, channelType : str) -> dict:
