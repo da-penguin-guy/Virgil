@@ -275,7 +275,7 @@ class DeviceInfo:
             errors.append(CreateError("MalformedMessage", "Info response missing 'channelType'."))
             return errors
 
-        channelType = infoResponse["channelType"]
+        channelType = infoResponse.get("channelType")
         if channelIndex == -1:
             if "deviceModel" not in infoResponse:
                 errors.append(CreateError("MalformedMessage", "Info response missing 'deviceModel'."))
