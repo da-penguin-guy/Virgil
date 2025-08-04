@@ -126,7 +126,9 @@ class DeviceInfo:
                 returnMessages.append(response)
             
             elif msgType == "statusUpdate":
-                returnMessages.extend(self.Update(ip, msg))
+                response = self.Update(ip, msg)
+                if response:
+                    returnMessages.extend(response)
 
             elif msgType == "statusRequest":
                 if "channelIndex" not in msg or "channelType" not in msg:
@@ -177,7 +179,9 @@ class DeviceInfo:
                 returnMessages.append(CreateInfoResponse(msg["channelIndex"], channelType))
 
             elif msgType == "infoResponse":
-                returnMessages.extend(self.Update(ip, msg))
+                response = self.Update(ip, msg)
+                if response:
+                    returnMessages.extend(response)
 
             elif msgType == "errorResponse":
                 print(f"Error response received: {msg.get('error', {}).get('errorString', 'Unknown error')}")
@@ -253,14 +257,14 @@ class DeviceInfo:
                 if not response:
                     if self.messageQueue:
                         self.ongoingCommunication = True
-                        response.append(self.messageQueue.pop(0))
+                        response = [self.messageQueue.pop(0)]
                     else:
                         self.ongoingCommunication = False
-                        response.append(CreateEndResponse())
+                        response = [CreateEndResponse()]
                 self.SendMessage(CreateBase(response))
             except Exception as e:
                 if not self.disabled:
-                    print(f"Error receiving data from {self.deviceIp}: {e}")
+                    raise e
                 continue
 
     def Update(self, ip: str, infoResponse: dict) -> list[dict]:
