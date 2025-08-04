@@ -12,7 +12,11 @@ All networked communication should occur using the UTF-8 encoding.
 
 TCP sockets should open when the devices boot up and only close once one of the devices goes offline
 
+**Watch out for race conditions when managing TCP socket connections.** If two devices attempt to connect simultaneously, ensure your code properly handles duplicate or conflicting connections.
+
 Keep track of the last time a message was received from each device. If 2 seconds has gone by without a device message, send a statusRequest on one of your linked channels
+
+
 
 
 
@@ -499,7 +503,7 @@ These parameters are only present in device information responses:
 - **deviceType**: Device category (string)
 - **virgilVersion**: Protocol version being used (string)
 - **channelCounts**: The counts for each various types of channels
-	- The 3 channel types are `tx`, `rx`, and `aux`
+  - The 3 channel types are `tx`, `rx`, and `aux`
 
 
 # Message Details

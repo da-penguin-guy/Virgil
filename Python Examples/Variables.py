@@ -164,11 +164,17 @@ class DeviceInfo:
                     )
 
             elif msgType == "infoRequest":
-                if "channelIndex" not in msg or "channelType" not in msg:
-                    print("Info request message missing 'channelIndex' or 'channelType'.")
-                    returnMessages.append(CreateError("MalformedMessage", "Info request message missing 'channelIndex' or 'channelType'."))
+                if "channelIndex" not in msg:
+                    print("Info request message missing 'channelIndex'.")
+                    returnMessages.append(CreateError("MalformedMessage", "Info request message missing 'channelIndex'."))
                     continue
-                returnMessages.append(CreateInfoResponse(msg["channelIndex"], msg["channelType"]))
+                # Device-level info requests (channelIndex = -1) don't require channelType
+                if msg["channelIndex"] != -1 and "channelType" not in msg:
+                    print("Info request message missing 'channelType'.")
+                    returnMessages.append(CreateError("MalformedMessage", "Info request message missing 'channelType'."))
+                    continue
+                channelType = msg.get("channelType", "")
+                returnMessages.append(CreateInfoResponse(msg["channelIndex"], channelType))
 
             elif msgType == "infoResponse":
                 returnMessages.extend(self.Update(ip, msg))
@@ -192,22 +198,13 @@ class DeviceInfo:
 
             elif msgType == "endResponse":
                 self.ongoingCommunication = False
-                if self.messageQueue:
-                    self.ongoingCommunication = True
-                    return (self.messageQueue.pop(0))
                 return None
 
             else:
                 print(f"Unknown message type: {msgType}")
                 returnMessages.append(CreateError("UnrecognizedCommand", f"Unknown message type: {msgType}"))
                 continue
-    
-        if not returnMessages:
-            if self.messageQueue:
-                self.ongoingCommunication = True
-                return (self.messageQueue.pop(0))
-            self.ongoingCommunication = False
-            return CreateEndResponse()
+
         return returnMessages
 
     def Run(self, deviceName: str, ip: str, queue: list[dict], conn: socket.socket = None, startingMessage: bytes = None):
@@ -254,7 +251,12 @@ class DeviceInfo:
                     self.End()
                 response = self.ProcessMessage(data, self.deviceIp)
                 if not response:
-                    continue
+                    if self.messageQueue:
+                        self.ongoingCommunication = True
+                        response.append(self.messageQueue.pop(0))
+                    else:
+                        self.ongoingCommunication = False
+                        response.append(CreateEndResponse())
                 self.SendMessage(CreateBase(response))
             except Exception as e:
                 if not self.disabled:
@@ -375,7 +377,22 @@ def CreateInfoResponse(channelIndex : int, channelType : str = "") -> dict:
     """
     Create an info response message.
     """
-    response : dict = {"messageType": "infoResponse"}
+    response : dict = {"messageType": "infoResponse", "channelIndex": channelIndex}
+    
+    # Handle device-level info requests (channelIndex = -1)
+    if channelIndex == -1:
+        response.update({
+            "deviceModel": selfModel,
+            "deviceType": selfType,
+            "virgilVersion": "2.0.0",
+            "channelCounts": {}  # You should populate this based on your device's channels
+        })
+        return response
+    
+    # Handle channel-specific info requests
+    if channelType:
+        response["channelType"] = channelType
+    
     key = (channelIndex, channelType)
     if key not in channels:
         return CreateError("ChannelIndexInvalid", f"Channel index {channelIndex} out of range for {channelType} channels.")
