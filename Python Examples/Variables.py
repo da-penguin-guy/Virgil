@@ -267,13 +267,14 @@ class DeviceInfo:
         # Always trust the latest IP address
         self.deviceIp = ip
         errors : list[dict] = []
+        channelIndex = infoResponse["channelIndex"]
         if "channelIndex" not in infoResponse:
             errors.append(CreateError("MalformedMessage", "Info response missing 'channelIndex'."))
             return errors
-        if "channelType" not in infoResponse:
+        if "channelType" not in infoResponse and channelIndex != -1:
             errors.append(CreateError("MalformedMessage", "Info response missing 'channelType'."))
             return errors
-        channelIndex = infoResponse["channelIndex"]
+
         channelType = infoResponse["channelType"]
         if channelIndex == -1:
             if "deviceModel" not in infoResponse:
