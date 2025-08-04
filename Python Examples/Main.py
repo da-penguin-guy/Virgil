@@ -88,6 +88,13 @@ def NetListener():
                 if not deviceName:
                     conn.close()
                     continue
+                
+                # Check if we already have an active connection with this device
+                if deviceName in Variables.devices and Variables.devices[deviceName].isVirgilDevice and Variables.devices[deviceName].conn:
+                    print(f"Already have active connection with {deviceName}, rejecting new connection")
+                    conn.close()
+                    continue
+                
                 Variables.devices[deviceName] = Variables.DeviceInfo(deviceName, remote_ip, conn, data)
             except Exception as e:
                 print(f"Error receiving initial data from {remote_ip}: {e}")
