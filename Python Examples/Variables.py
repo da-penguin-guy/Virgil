@@ -265,7 +265,7 @@ class DeviceInfo:
                 else:
                     if self.messageQueue:
                         self.ongoingCommunication = True
-                        response = [self.messageQueue.pop(0)]
+                        response = self.messageQueue.pop(0)
                     elif self.ongoingCommunication:
                         self.ongoingCommunication = False
                         response = CreateBase(CreateEndResponse())
