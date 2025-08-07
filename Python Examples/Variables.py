@@ -245,10 +245,16 @@ class DeviceInfo:
                 try:
                     data = self.conn.recv(4096)
                 except TimeoutError:
+                    if self.messageQueue and not self.ongoingCommunication:
+                        self.ongoingCommunication = True
+                        self.SendMessage(CreateBase(self.messageQueue.pop(0)))           
                     continue
                 except OSError as e:
                     if getattr(e, 'errno', None) == 10060:  # Windows timeout
-                        continue
+                        if self.messageQueue and not self.ongoingCommunication:
+                            self.ongoingCommunication = True
+                            self.SendMessage(CreateBase(self.messageQueue.pop(0)))           
+                    continue
                     raise
                 if not data:
                     print(f"Connection closed by remote device {self.deviceIp}")
@@ -258,9 +264,11 @@ class DeviceInfo:
                     if self.messageQueue:
                         self.ongoingCommunication = True
                         response = [self.messageQueue.pop(0)]
-                    else:
+                    elif self.ongoingCommunication:
                         self.ongoingCommunication = False
                         response = [CreateEndResponse()]
+                    else:
+                        continue
                 self.SendMessage(CreateBase(response))
             except Exception as e:
                 if not self.disabled:
