@@ -241,8 +241,6 @@ class DeviceInfo:
             self.ongoingCommunication = True
             self.SendMessage(self.messageQueue.pop(0))
         while not self.disabled:
-            time.sleep(.5)
-            print(self.messageQueue)
             try:
                 try:
                     data = self.conn.recv(4096)
@@ -261,8 +259,10 @@ class DeviceInfo:
                 if not data:
                     print(f"Connection closed by remote device {self.deviceIp}")
                     self.End()
-                response = CreateBase(self.ProcessMessage(data, self.deviceIp))
-                if not response:
+                response = self.ProcessMessage(data, self.deviceIp)
+                if response:
+                    response = CreateBase(response)
+                else:
                     if self.messageQueue:
                         self.ongoingCommunication = True
                         response = [self.messageQueue.pop(0)]
