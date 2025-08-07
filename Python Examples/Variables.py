@@ -247,13 +247,13 @@ class DeviceInfo:
                 except TimeoutError:
                     if self.messageQueue and not self.ongoingCommunication:
                         self.ongoingCommunication = True
-                        self.SendMessage(CreateBase(self.messageQueue.pop(0)))           
+                        self.SendMessage(self.messageQueue.pop(0))        
                     continue
                 except OSError as e:
                     if getattr(e, 'errno', None) == 10060:  # Windows timeout
                         if self.messageQueue and not self.ongoingCommunication:
                             self.ongoingCommunication = True
-                            self.SendMessage(CreateBase(self.messageQueue.pop(0)))           
+                            self.SendMessage(self.messageQueue.pop(0))
                     continue
                     raise
                 if not data:
