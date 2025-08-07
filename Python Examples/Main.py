@@ -1,4 +1,6 @@
 import Variables
+import os
+os.system('cls' if os.name == 'nt' else 'clear')
 from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser
 import socket
 import json
@@ -26,7 +28,7 @@ class MDNSListener:
         # Remove device from found_devices if present
         if name in found_devices:
             found_devices.remove(name)
-            print(f"Device removed: {name}")
+            Variables.PrintBlue(f"Device removed: {name}")
 
     def update_service(self, zeroconf, type, name):
         # Handle service updates - can be empty if not needed
@@ -37,36 +39,42 @@ class MDNSListener:
         # Extract the base name of the service to compare with selfName
         base_name = name.split('.')[0]  # Assuming the name format is "<base_name>.<type>"
         if info and base_name != Variables.selfName:
-            if name not in found_devices:
-                found_devices.append(base_name)
-                print(f"Found device: {base_name}")
-                for conn in Variables.connections:
-                    if conn.connectedDevice != base_name:
-                        continue
-                    if conn.connectedDevice not in Variables.devices:
-                        Variables.devices[conn.connectedDevice] = Variables.DeviceInfo(
-                            conn.connectedDevice, 
-                            socket.inet_ntoa(info.addresses[0]), 
-                            queue=[
-                                Variables.CreateBase(Variables.CreateInfoRequest(-1)),
-                                Variables.CreateBase(Variables.CreateInfoRequest(conn.channelIndex, conn.channelType)),
-                                Variables.CreateBase(Variables.CreateChannelLink(conn.selfIndex, conn.selfType, conn.channelIndex, conn.channelType))
-                            ]
-                        )
-                    else:
-                        Variables.devices[conn.connectedDevice].messageQueue.append(
-                            Variables.CreateBase(Variables.CreateInfoRequest(conn.channelIndex, conn.channelType))
-                        )
-                        Variables.devices[conn.connectedDevice].messageQueue.append(
-                            Variables.CreateBase(Variables.CreateChannelLink(conn.selfIndex, conn.selfType, conn.channelIndex, conn.channelType))
-                        )
+            if base_name in found_devices:
+                return  # Already found this device
+            found_devices.append(base_name)
+            Variables.PrintBlue(f"Found device: {base_name}")
+            if base_name in Variables.devices:
+                Variables.PrintBlue(f"Device already exists: {base_name}")
+                return  # Already have this device in Variables.devices
+            # Create the device with the found IP address
+            CreateDevice(base_name, socket.inet_ntoa(info.addresses[0]))
 
+
+def CreateDevice(deviceName : str, deviceIp : str, sock : socket.socket = None, startingMessage: bytes = None):
+    infoRequests : list[dict] = []
+    channelLink : list[dict] = []
+    for connection in Variables.connections:
+        if connection.connectedDevice != deviceName:
+            continue
+        infoRequests.append(Variables.CreateInfoRequest(connection.channelIndex, connection.channelType))
+        channelLink.append(Variables.CreateChannelLink(connection.selfIndex, connection.selfType, connection.channelIndex, connection.channelType))
+    Variables.devices[deviceName] = Variables.DeviceInfo(
+                deviceName=deviceName,
+                ip=deviceIp,
+                sock=sock,
+                startingMessage=startingMessage,
+                queue=[
+                    Variables.CreateInfoRequest(-1),
+                    infoRequests,
+                    channelLink
+                ]
+            )
 
 def NetListener():
     """
     Listens for TCP connections and creates DeviceInfo for each new socket.
     """
-    print(f"Listening for TCP messages on port {Variables.virgilPort}...")
+    Variables.PrintBlue(f"Listening for TCP messages on port {Variables.virgilPort}...")
 
     listen_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -75,32 +83,32 @@ def NetListener():
 
     try:
         while True:
-            conn, addr = listen_sock.accept()
+            sock, addr = listen_sock.accept()
             remote_ip = addr[0]
-            print(f"Accepted connection from {remote_ip}")
+            Variables.PrintGreen(f"Accepted connection from {remote_ip}")
             try:
-                data = conn.recv(4096)
+                data = sock.recv(4096)
                 if not data:
-                   conn.close()
+                   sock.close()
                    continue
                 j: dict= json.loads(data.decode('utf-8'))
                 deviceName = j.get("transmittingDevice")
                 if not deviceName:
-                    conn.close()
+                    sock.close()
                     continue
                 
                 # Check if we already have an active connection with this device
-                if deviceName in Variables.devices and Variables.devices[deviceName].isVirgilDevice and Variables.devices[deviceName].conn:
-                    print(f"Already have active connection with {deviceName}, rejecting new connection")
-                    conn.close()
+                if deviceName in Variables.devices and Variables.devices[deviceName].isVirgilDevice and Variables.devices[deviceName].sock:
+                    Variables.PrintRed(f"Already have active connection with {deviceName}, rejecting new connection")
+                    sock.close()
                     continue
-                
-                Variables.devices[deviceName] = Variables.DeviceInfo(deviceName, remote_ip, conn, data)
+
+                CreateDevice(deviceName, remote_ip, sock, data)
             except Exception as e:
-                print(f"Error receiving initial data from {remote_ip}: {e}")
-                conn.close()
+                Variables.PrintRed(f"Error receiving initial data from {remote_ip}: {e}")
+                sock.close()
     except KeyboardInterrupt:
-        print("NetListener shutting down...")
+        Variables.PrintRed("NetListener shutting down...")
     finally:
         listen_sock.close()
 
@@ -108,7 +116,7 @@ def NetListener():
 configFiles = [f for f in os.listdir('.') if f.endswith('.config')]
 print(configFiles)
 if not configFiles:
-    print("No .config files found in the current directory.")
+    Variables.PrintRed("No .config files found in the current directory.")
 else:
     print("Select a .config file:")
     for idx, fname in enumerate(configFiles):
@@ -118,14 +126,14 @@ else:
         try:
             idx = int(choice) - 1
             if idx < 0 or idx >= len(configFiles):
-                print("Invalid selection.")
+                Variables.PrintRed("Invalid selection.")
                 continue
             selectedFile = configFiles[idx]
             print(f"You selected: {selectedFile}")
             Variables.LoadConfig(selectedFile)
             break
         except ValueError:
-            print("Invalid selection.")
+            Variables.PrintRed("Invalid selection.")
 
 
 service_type = "_virgil._tcp.local."
@@ -152,9 +160,14 @@ zeroconf.register_service(info)
 listenerThread = threading.Thread(target=NetListener, daemon=True)
 listenerThread.start()
 
+Variables.PrintBlue("Blue for outbound")
+Variables.PrintGreen("Green for inbound")
+Variables.PrintRed("Red for errors")
+print("\n")
+
 # The actual protocol would use Dante's mDNS, but I can't do that
 # Instead, this is using virgil mDNS. For a proper implementation, you would use Dante's mDNS.
-print("Scanning for mDNS devices...")
+Variables.PrintBlue("Scanning for mDNS devices...")
 browser = ServiceBrowser(zeroconf, "_virgil._tcp.local.", MDNSListener())
 
 # PyQt GUI
@@ -243,7 +256,7 @@ gui.show()
 try:
     app.exec()
 except KeyboardInterrupt:
-    print("Shutting down...")
+    Variables.PrintRed("Shutting down...")
 
 
 
