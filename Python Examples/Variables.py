@@ -147,8 +147,7 @@ class DeviceInfo:
                     channelIndex=msg.get("selfIndex", None),
                     channelType=msg.get("selfType", None),
                     selfIndex=msg["channelIndex"],
-                    selfType=msg["channelType"],
-                    deviceIp=ip
+                    selfType=msg["channelType"]
                 ))
             
             elif msgType == "channelUnlink":
