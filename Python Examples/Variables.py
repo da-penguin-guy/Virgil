@@ -259,17 +259,17 @@ class DeviceInfo:
                 if not data:
                     print(f"Connection closed by remote device {self.deviceIp}")
                     self.End()
-                response = self.ProcessMessage(data, self.deviceIp)
+                response = CreateBase(self.ProcessMessage(data, self.deviceIp))
                 if not response:
                     if self.messageQueue:
                         self.ongoingCommunication = True
                         response = [self.messageQueue.pop(0)]
                     elif self.ongoingCommunication:
                         self.ongoingCommunication = False
-                        response = [CreateEndResponse()]
+                        response = CreateBase(CreateEndResponse())
                     else:
                         continue
-                self.SendMessage(CreateBase(response))
+                self.SendMessage(response)
             except Exception as e:
                 if not self.disabled:
                     raise e
@@ -343,6 +343,7 @@ def CreateBase(messages) -> dict:
     """
     if isinstance(messages, dict):
         messages = [messages]
+    print(f"Creating base message for {messages}")
     return {
         "transmittingDevice": selfName,
         "messages": messages
