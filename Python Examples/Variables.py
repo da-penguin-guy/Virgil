@@ -66,6 +66,7 @@ class DeviceConnection:
         AddSubscription(connectedDevice, selfIndex, selfType)
 
     def CheckForRemove(self, connectedDevice: str, channelIndex: int, channelType: str, selfIndex: int, selfType: str):
+        #If we match the given info, delete ourselves
         if(self.connectedDevice == connectedDevice and
                 self.channelIndex == channelIndex and
                 self.channelType == channelType and
@@ -109,6 +110,7 @@ class DeviceInfo:
 
 
     def __init__(self, deviceName: str, ip: str, sock : socket.socket = None, startingMessage: bytes = None, queue: list[list[dict]] = []):
+        #Just call Run in a separate Thread
         thread = threading.Thread(target=self.Run, args=(deviceName, ip, queue, sock, startingMessage), daemon=True)
         thread.start()
 
@@ -116,21 +118,26 @@ class DeviceInfo:
         """
         Send a JSON object to the specified IP using TCP.
         """
-        # Send via TCP
+        #Send via TCP
         jsonInfo = json.dumps(CreateBase(messages))
         PrintBlue(f"Sending message to {self.deviceIp}: \n {jsonInfo}")
         self.sock.sendall(jsonInfo.encode('utf-8'))
 
 
     def ProcessMessage(self, raw : bytes, ip : str):
-        # Always trust the latest IP address
+        #Always trust the latest IP address because it might matter
         self.deviceIp = ip
+
+        #Decode json safely
         try:
             packet = json.loads(raw.decode('utf-8'))
         except json.JSONDecodeError:
             PrintRed(f"Failed to decode JSON from {ip}: {raw}")
             return CreateError("MalformedMessage", "The JSON received is malformed.")
+        
         PrintGreen(f"Received message from {ip}: \n {raw.decode('utf-8')}")
+
+        #Check that all the required fields are present
         if "transmittingDevice" not in packet or not isinstance(packet["transmittingDevice"], str) or not packet["transmittingDevice"]:
             PrintRed("Message does not contain 'transmittingDevice'.")
             return CreateError("MalformedMessage", "The JSON received is missing 'transmittingDevice'.")
@@ -141,52 +148,66 @@ class DeviceInfo:
         if "messages" not in packet or not isinstance(packet["messages"], list) or not packet["messages"]:
             PrintRed("Message does not contain 'messages'.")
             return CreateError("MalformedMessage", "The JSON received is missing 'messages'.")
+        
+        #Setup message returns
         returnMessages: list[dict] = []
         self.ongoingCommunication = True
+
         for msg in packet["messages"]:
+            #Error Handling
             if not isinstance(msg, dict) or not msg:
                 PrintRed("Invalid message format.")
                 returnMessages.append(CreateError("MalformedMessage", "One of the messages is not a valid JSON object."))
                 continue
-
             if "messageType" not in msg or not isinstance(msg["messageType"], str) or not msg["messageType"]:
                 PrintRed("Message missing 'messageType'.")
                 returnMessages.append(CreateError("MalformedMessage", "Message missing 'messageType'."))
                 continue
+
             msgType = msg["messageType"]
 
-
             if msgType == "parameterCommand":
+                #Error Handling
                 if "channelIndex" not in msg or "channelType" not in msg:
                     PrintRed("Parameter command message missing 'channelIndex' or 'channelType'.")
                     returnMessages.append(CreateError("MalformedMessage", "Parameter command message missing 'channelIndex' or 'channelType'."))
                     continue
+                
+                #Remove params that we don't need
                 channelIndex = msg.pop("channelIndex")
                 channelType = msg.pop("channelType")
                 msg.pop("messageType")
+
+                #Loop over every parameter, process them, and add errors if there are any
                 for key,value in msg.items():
                     returnMessages.append(ProcessParamChange(channelIndex, channelType, key, value))
-                
+
+                #Create a status update with changes params and send it to every device except the one we're communicating with
                 response = SendStatusUpdate(channelIndex, channelType, name, list(msg.keys()))
                 returnMessages.append(response)
             
             elif msgType == "statusUpdate":
                 response = self.Update(ip, msg)
+                #If there are errors/responses, add them
                 if response:
                     returnMessages.extend(response)
 
             elif msgType == "statusRequest":
+                #Error Handling
                 if "channelIndex" not in msg or "channelType" not in msg:
                     PrintRed("Status request message missing 'channelIndex' or 'channelType'.")
                     returnMessages.append(CreateError("MalformedMessage", "Status request message missing 'channelIndex' or 'channelType'."))
                     continue
+                #Send a status update with every param
                 returnMessages.append(CreateStatusUpdate(msg["channelIndex"], msg["channelType"]))
             
             elif msgType == "channelLink":
+                #Error Handling
                 if "channelIndex" not in msg or "channelType" not in msg:
                     PrintRed("Channel link message missing 'channelIndex' or 'channelType'.")
                     returnMessages.append(CreateError("MalformedMessage", "Channel link message missing 'channelIndex' or 'channelType'."))
                     continue
+                #Keep track of device and add subscription
                 connections.append(DeviceConnection(
                     connectedDevice=name,
                     channelIndex=msg.get("selfIndex", None),
@@ -196,10 +217,13 @@ class DeviceInfo:
                 ))
             
             elif msgType == "channelUnlink":
+                #Error Handling
                 if "channelIndex" not in msg or "channelType" not in msg:
                     PrintRed("Channel unlink message missing 'channelIndex' or 'channelType'.")
                     returnMessages.append(CreateError("MalformedMessage", "Channel unlink message missing 'channelIndex' or 'channelType'."))
                     continue
+
+                #Loop through and call a function that removes them if their params are matched
                 for conn in connections:
                     conn.CheckForRemove(
                         connectedDevice=name,
@@ -210,6 +234,7 @@ class DeviceInfo:
                     )
 
             elif msgType == "infoRequest":
+                #Error Handling
                 if "channelIndex" not in msg:
                     PrintRed("Info request message missing 'channelIndex'.")
                     returnMessages.append(CreateError("MalformedMessage", "Info request message missing 'channelIndex'."))
@@ -219,32 +244,39 @@ class DeviceInfo:
                     PrintRed("Info request message missing 'channelType'.")
                     returnMessages.append(CreateError("MalformedMessage", "Info request message missing 'channelType'."))
                     continue
+
                 channelType = msg.get("channelType", "")
                 returnMessages.append(CreateInfoResponse(msg["channelIndex"], channelType))
 
             elif msgType == "infoResponse":
+                #Same exact thing as statusUpdate
                 response = self.Update(ip, msg)
                 if response:
                     returnMessages.extend(response)
 
             elif msgType == "errorResponse":
-                PrintRed(f"Error response received: {msg.get('error', {}).get('errorString', 'Unknown error')}")
+                PrintRed(f"Error response received: {msg.get('errorString', 'Unknown error')}")
             
             elif msgType == "subscribeMessage":
+                #Error Handling
                 if "channelIndex" not in msg or "channelType" not in msg:
                     PrintRed("Subscribe message missing 'channelIndex' or 'channelType'.")
                     returnMessages.append(CreateError("MalformedMessage", "Subscribe message missing 'channelIndex' or 'channelType'."))
                     continue
+                    
                 AddSubscription(name, msg["channelIndex"], msg["channelType"])
             
             elif msgType == "unsubscribeMessage":
+                #Error Handling
                 if "channelIndex" not in msg or "channelType" not in msg:
                     PrintRed("Unsubscribe message missing 'channelIndex' or 'channelType'.")
                     returnMessages.append(CreateError("MalformedMessage", "Unsubscribe message missing 'channelIndex' or 'channelType'."))
                     continue
+
                 RemoveSubscription(name, msg["channelIndex"], msg["channelType"])
 
             elif msgType == "endResponse":
+                #Immediately returns none and indicates end of communication
                 self.ongoingCommunication = False
                 return None
 
@@ -263,57 +295,90 @@ class DeviceInfo:
         PrintGreen(f"Device {self.deviceName} started with IP {self.deviceIp}.")
         PrintGreen(f"Device {self.deviceName} is {'connected' if self.sock else 'not connected'}.")
         try:
+            #If we don't have a socket, create one
+            #We would have a socket if this was created in the netListener
             if self.sock:
+                #If we already have a socket, we are communicating
                 self.ongoingCommunication = True
             else:
                 self.ongoingCommunication = False
                 self.sock = socket.socket()
                 self.sock.connect((self.deviceIp, virgilPort))
             self.sock.settimeout(2.0)  # 2 second timeout
+            #If there wasn't an exception by now, the device is a Virgil device and we're connected
             self.isVirgilDevice = True
             PrintGreen("Device Connected")
         except Exception as e:
             self.isVirgilDevice = False
             PrintRed(f"Failed to connect to device {self.deviceName} at {self.deviceIp}: {e}")
             return
+
+        #If we have already received a message, process it
+        #This would happen if it was created in the netListener
         if startingMessage:
             try:
                 response = self.ProcessMessage(startingMessage, self.deviceIp)
+                if not response:
+                    #If we don't have a response, try to pull from the message queue
+                    if self.messageQueue:
+                        self.ongoingCommunication = True
+                        response = self.messageQueue.pop(0)
+                    #If the queue is empty and we are still communicating, indicate that we're done
+                    elif self.ongoingCommunication:
+                        self.ongoingCommunication = False
+                        response = CreateEndResponse()
+                    #Otherwise, just skip
+                    else:
+                        self.ongoingCommunication = False
+                #Send the response if we have one
                 if response:
                     self.SendMessage(response)
             except Exception as e:
                 PrintRed(f"Error processing starting message: {e}")
                 return
+        #If we don't have a starting message, try to pull from the message queue
         elif self.messageQueue:
             self.ongoingCommunication = True
             self.SendMessage(self.messageQueue.pop(0))
+        #Main loop
         while not self.disabled:
             try:
+                #Try to pull from the queue
                 if self.messageQueue and not self.ongoingCommunication:
                     self.ongoingCommunication = True
                     self.SendMessage(self.messageQueue.pop(0))
+                #Try to receive data from the socket
                 try:
                     data = self.sock.recv(4096)
-                except TimeoutError:      
+
+                #If we timeout, go back to the start to look for new queue messages
+                except TimeoutError:        
                     continue
                 except OSError as e:
                     if getattr(e, 'errno', None) == 10060:  # Windows timeout
                         continue
                     raise
+                #If we receive no data, the connection is closed
                 if not data:
                     PrintGreen(f"Connection closed by remote device {self.deviceIp}")
                     self.End()
                 response = self.ProcessMessage(data, self.deviceIp)
                 if not response:
+                    #If we don't have a response, try to pull from the message queue
                     if self.messageQueue:
                         self.ongoingCommunication = True
                         response = self.messageQueue.pop(0)
+                    #If the queue is empty and we are still communicating, indicate that we're done
                     elif self.ongoingCommunication:
                         self.ongoingCommunication = False
                         response = CreateEndResponse()
+                    #Otherwise, just skip
                     else:
                         continue
+                #Send the response
                 self.SendMessage(response)
+
+            #Make sure it doesn't crash
             except Exception as e:
                 if not self.disabled:
                     break
@@ -323,16 +388,19 @@ class DeviceInfo:
         # Always trust the latest IP address
         self.deviceIp = ip
         errors : list[dict] = []
-        channelIndex = infoResponse["channelIndex"]
+
+        #Error handling
         if "channelIndex" not in infoResponse:
             errors.append(CreateError("MalformedMessage", "Info response missing 'channelIndex'."))
             return errors
+        channelIndex = infoResponse["channelIndex"]
         if "channelType" not in infoResponse and channelIndex != -1:
             errors.append(CreateError("MalformedMessage", "Info response missing 'channelType'."))
             return errors
 
         channelType = infoResponse.get("channelType")
         if channelIndex == -1:
+            #Error handling for device level things
             if "deviceModel" not in infoResponse:
                 errors.append(CreateError("MalformedMessage", "Info response missing 'deviceModel'."))
             if "deviceType" not in infoResponse:
@@ -343,33 +411,52 @@ class DeviceInfo:
                 errors.append(CreateError("MalformedMessage", "Info response missing 'channelCounts'."))
             if errors:
                 return errors
+            #Update device information
             self.deviceModel = infoResponse["deviceModel"]
             self.deviceType = infoResponse["deviceType"]
             self.virgilVersion = infoResponse["virgilVersion"]
             self.channelCounts = infoResponse["channelCounts"]
             return
+        
+        #Remove for processing
         infoResponse.pop("channelIndex")
         infoResponse.pop("channelType")
-        infoResponse.pop("messageType")
+        messageType = infoResponse.pop("messageType")
+
+        #Create channel entry if it doesn't exist
         if (channelIndex,channelType) not in self.channels:
             self.channels[(channelIndex,channelType)] = {}
-        self.channels[(channelIndex,channelType)].update(infoResponse)
+
+        #If the message is an infoResponse, it should overwrite the existing entry
+        if messageType == "infoResponse":
+            self.channels[(channelIndex,channelType)] = infoResponse
+        else:
+            self.channels[(channelIndex,channelType)].update(infoResponse)
+        
+        #If we've reached here, we have no errors
         return None
 
     def End(self):
         """
         End the ongoing communication and clean up resources.
         """
+        #If socket exists, close it
         if self.sock:
             self.sock.close()
             self.sock = None
+        #Stop main loop
         self.disabled = True
+        #Unsubscribe from all connections
         for conn in connections:
             if conn.connectedDevice == self.deviceName:
                 conn.Remove()
+        #Delete ourselves
         devices.pop(self.deviceName)
 
 def GetIp():
+    """
+    Creates a socket to get local IP address
+    """
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(('8.8.8.8', 80))

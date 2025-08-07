@@ -36,16 +36,22 @@ class MDNSListener:
 
     def add_service(self, zeroconf, type, name):
         info = zeroconf.get_service_info(type, name)
-        # Extract the base name of the service to compare with selfName
-        base_name = name.split('.')[0]  # Assuming the name format is "<base_name>.<type>"
+        # Extract the actually useful name
+        base_name = name.split('.')[0] 
+
+        # Check that we didn't find ourselves
         if info and base_name != Variables.selfName:
+            # Check if we already found this device via mDNS
             if base_name in found_devices:
-                return  # Already found this device
+                return  
             found_devices.append(base_name)
             Variables.PrintBlue(f"Found device: {base_name}")
+
+            # Check if we already have this device via netListener
             if base_name in Variables.devices:
                 Variables.PrintBlue(f"Device already exists: {base_name}")
-                return  # Already have this device in Variables.devices
+                return
+            
             # Create the device with the found IP address
             CreateDevice(base_name, socket.inet_ntoa(info.addresses[0]))
 
@@ -53,11 +59,17 @@ class MDNSListener:
 def CreateDevice(deviceName : str, deviceIp : str, sock : socket.socket = None, startingMessage: bytes = None):
     infoRequests : list[dict] = []
     channelLink : list[dict] = []
+
+    #Loop over every connection for this device and add the needed messages
     for connection in Variables.connections:
         if connection.connectedDevice != deviceName:
             continue
         infoRequests.append(Variables.CreateInfoRequest(connection.channelIndex, connection.channelType))
         channelLink.append(Variables.CreateChannelLink(connection.selfIndex, connection.selfType, connection.channelIndex, connection.channelType))
+    #Create the device
+    #These messages are split up into 3 because you may want to do check a channel exists first
+    #I don't do that, but it would be a good idea
+    #It is also fine if you don't because you'll just get an error message
     Variables.devices[deviceName] = Variables.DeviceInfo(
                 deviceName=deviceName,
                 ip=deviceIp,
@@ -76,21 +88,26 @@ def NetListener():
     """
     Variables.PrintBlue(f"Listening for TCP messages on port {Variables.virgilPort}...")
 
+    #Create listening socket
     listen_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listen_sock.bind(("", Variables.virgilPort))
     listen_sock.listen(5)
 
     try:
+        # Accept incoming connections
         while True:
             sock, addr = listen_sock.accept()
             remote_ip = addr[0]
             Variables.PrintGreen(f"Accepted connection from {remote_ip}")
             try:
+                #Receive initial data
                 data = sock.recv(4096)
+                #If data is empty, the other side already closed the connection
                 if not data:
                    sock.close()
                    continue
+                #parse JSON
                 j: dict= json.loads(data.decode('utf-8'))
                 deviceName = j.get("transmittingDevice")
                 if not deviceName:
@@ -102,17 +119,19 @@ def NetListener():
                     Variables.PrintRed(f"Already have active connection with {deviceName}, rejecting new connection")
                     sock.close()
                     continue
-
+                #Create new device, passing it the message we already got and the pre-existing socket
                 CreateDevice(deviceName, remote_ip, sock, data)
             except Exception as e:
+                # Handle any errors in receiving or processing the initial data
                 Variables.PrintRed(f"Error receiving initial data from {remote_ip}: {e}")
                 sock.close()
     except KeyboardInterrupt:
+        #If program is stopped, stop
         Variables.PrintRed("NetListener shutting down...")
     finally:
         listen_sock.close()
 
-
+#Search all .config files and let the user choose
 configFiles = [f for f in os.listdir('.') if f.endswith('.config')]
 print(configFiles)
 if not configFiles:
