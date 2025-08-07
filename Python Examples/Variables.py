@@ -241,6 +241,8 @@ class DeviceInfo:
             self.ongoingCommunication = True
             self.SendMessage(self.messageQueue.pop(0))
         while not self.disabled:
+            time.sleep(.5)
+            print(self.messageQueue)
             try:
                 try:
                     data = self.conn.recv(4096)
@@ -254,7 +256,7 @@ class DeviceInfo:
                         if self.messageQueue and not self.ongoingCommunication:
                             self.ongoingCommunication = True
                             self.SendMessage(self.messageQueue.pop(0))
-                    continue
+                        continue
                     raise
                 if not data:
                     print(f"Connection closed by remote device {self.deviceIp}")
@@ -343,7 +345,6 @@ def CreateBase(messages) -> dict:
     """
     if isinstance(messages, dict):
         messages = [messages]
-    print(f"Creating base message for {messages}")
     return {
         "transmittingDevice": selfName,
         "messages": messages
