@@ -227,13 +227,13 @@ class VirgilGUI(QMainWindow):
         refresh_btn.clicked.connect(self.refresh_devices)
         devices_layout.addWidget(refresh_btn)
         layout.addWidget(devices_group)
+
         
         # Set up timer to update the GUI
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_gui)
         self.timer.start(1000)  # Update every second
         
-        self.log("Virgil GUI started")
     
     def update_gui(self):
         """Update the GUI with current data"""
@@ -245,13 +245,7 @@ class VirgilGUI(QMainWindow):
     def refresh_devices(self):
         """Refresh the device list"""
         self.update_gui()
-        self.log("Device list refreshed")
     
-    def log(self, message):
-        """Add a message to the log"""
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.log_text.append(f"[{timestamp}] {message}")
 
 # Create and run the GUI
 if not QApplication.instance():

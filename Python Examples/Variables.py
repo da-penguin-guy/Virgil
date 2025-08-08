@@ -649,12 +649,11 @@ def LoadConfig(filepath: str):
         ))
 
 
-#If this channel setup makes no sense, it's because it's a spectera 2x2 setup, which is the most complicated setup I could think of.
+
 channels : dict[tuple[int,str],dict] = {
 }
 
-#This only has rx connections because that's all the dante device will know
-#These IPs would be found using Dante discovery
+
 connections : list[DeviceConnection]= [
 ]
 
