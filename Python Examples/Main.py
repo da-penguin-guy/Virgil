@@ -369,8 +369,7 @@ class VirgilGUI(QMainWindow):
             # For whole number steps, base the step off minValue instead of 0
             minValue = self.gainDial.minimum() / 10
             steps_from_min = round((actualValue - minValue) / step)
-            snapped_value = minValue + (steps_from_min * step)
-            
+            snapped_value = round(minValue + (steps_from_min * step), 3)
 
             if device.channels[key]["gain"]["value"] != snapped_value:
                 device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "gain", snapped_value))
