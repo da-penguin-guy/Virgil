@@ -228,16 +228,6 @@ class VirgilGUI(QMainWindow):
         devices_layout.addWidget(refresh_btn)
         layout.addWidget(devices_group)
         
-        # Log section
-        log_group = QGroupBox("Activity Log")
-        log_layout = QVBoxLayout(log_group)
-        
-        self.log_text = QTextEdit()
-        self.log_text.setMaximumHeight(100)
-        self.log_text.setReadOnly(True)
-        log_layout.addWidget(self.log_text)
-        layout.addWidget(log_group)
-        
         # Set up timer to update the GUI
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_gui)

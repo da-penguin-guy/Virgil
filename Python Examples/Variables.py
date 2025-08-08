@@ -79,7 +79,9 @@ class DeviceConnection:
         Remove this connection from the subscriptions.
         """
         RemoveSubscription(self.connectedDevice, self.selfIndex, self.selfType)
-        connections.pop(self)
+        #This if statement is only needed because i'm not actually using dante
+        if(self.channelType != "rx" or self.channelIndex is None):
+            connections.pop(self)
 
 def AddSubscription(connectedDevice: str, selfIndex: int = None, selfType: str = None):
     key = (selfIndex, selfType)
@@ -92,7 +94,6 @@ def RemoveSubscription(connectedDevice: str, selfIndex: int = None, selfType: st
     key = (selfIndex, selfType)
     if key in subscriptionList and connectedDevice in subscriptionList[key]:
         subscriptionList[key].remove(connectedDevice)
-
     
 class DeviceInfo:
     name = ""
@@ -350,18 +351,17 @@ class DeviceInfo:
                 #Try to receive data from the socket
                 try:
                     data = self.sock.recv(4096)
-
                 #If we timeout, go back to the start to look for new queue messages
                 except TimeoutError:        
                     continue
                 except OSError as e:
                     if getattr(e, 'errno', None) == 10060:  # Windows timeout
                         continue
-                    raise
                 #If we receive no data, the connection is closed
                 if not data:
                     PrintGreen(f"Connection closed by remote device {self.deviceIp}")
                     self.End()
+
                 response = self.ProcessMessage(data, self.deviceIp)
                 if not response:
                     #If we don't have a response, try to pull from the message queue
@@ -382,6 +382,7 @@ class DeviceInfo:
             except Exception as e:
                 if not self.disabled:
                     break
+                PrintRed(f"Error in device {self.deviceName} communication: {e}")
                 continue
 
     def Update(self, ip: str, infoResponse: dict) -> list[dict]:
@@ -453,7 +454,7 @@ class DeviceInfo:
         #Delete ourselves
         devices.pop(self.deviceName)
 
-def GetIp():
+def GetIp() -> str:
     """
     Creates a socket to get local IP address
     """
