@@ -191,6 +191,8 @@ browser = ServiceBrowser(zeroconf, "_virgil._tcp.local.", MDNSListener())
 
 # PyQt GUI
 class VirgilGUI(QMainWindow):
+    selectedConn: Variables.DeviceConnection = None
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Virgil Protocol Monitor")
@@ -239,7 +241,8 @@ class VirgilGUI(QMainWindow):
 
         selector_group = QGroupBox("Channel Control")
         selector_layout = QVBoxLayout(selector_group)
-        self.deviceSelector = QComboBox()
+        self.deviceSelector : QComboBox = QComboBox()
+        self.deviceSelector.currentIndexChanged.connect(self.ReceiveValues)
         selector_layout.addWidget(QLabel("Select Connection:"))
         selector_layout.addWidget(self.deviceSelector)
         selector_layout.addStretch(1)
@@ -274,8 +277,7 @@ class VirgilGUI(QMainWindow):
         h_layout.addWidget(right_widget, stretch=2)
         self.ReceiveValues()
 
-    def ReceiveValues(self):
-        """Update the GUI with current data and persist dropdown selection"""
+    def UpdateDeviceList(self):
         # Save current selection for the connection selector
         self.device_list.clear()
         for device_name, device_info in Variables.devices.items():
@@ -290,12 +292,12 @@ class VirgilGUI(QMainWindow):
             if conn.connectedDevice not in Variables.devices or not Variables.devices[conn.connectedDevice].isVirgilDevice:
                 continue
             # Build a readable label for each connection
-            selfType = conn.selfType if conn.selfType is not None else ""
-            selfIndex = conn.selfIndex if conn.selfIndex is not None else ""
-            channelType = conn.channelType if conn.channelType is not None else ""
-            channelIndex = conn.channelIndex if conn.channelIndex is not None else ""
+            selfType = conn.selfType if conn.selfType else ""
+            selfIndex = conn.selfIndex + 1 if conn.selfIndex is not None else ""
+            channelType = conn.channelType if conn.channelType else ""
+            channelIndex = conn.channelIndex + 1 if conn.channelIndex is not None else ""
             label = f"{conn.connectedDevice}:{selfType} {selfIndex} -> {channelType} {channelIndex}"
-            self.deviceSelector.addItem(label, userData=f"{conn.connectedDevice}:{selfType}:{selfIndex}:{channelType}:{channelIndex}")
+            self.deviceSelector.addItem(label, userData=conn)
 
             # Restore previous selection by label if possible
             if selectedLabel is label:
@@ -307,8 +309,20 @@ class VirgilGUI(QMainWindow):
             self.padButton.setEnabled(False)
             self.gainValueLabel.setText("NA")
             return
+
+    def ReceiveValues(self):
+        """Update the GUI with current data and persist dropdown selection"""
+        self.selectedConn = self.deviceSelector.currentData()
+        if not self.selectedConn:
+            return
         device = Variables.devices[self.selectedConn.connectedDevice]
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
+        if key not in device.channels:
+            Variables.PrintRed(f"Channel {key} not found in device {device.deviceName}. Refreshing...")
+            self.UpdateDeviceList()
+            return
+        for key,value in device.channels.items():
+            Variables.PrintYellow(f"{key}: {json.dumps(value, indent=2)}")
 
         if "gain" in device.channels[key]:
             step = device.channels[key]["gain"]["precision"]

@@ -20,7 +20,7 @@ def SetGUIReference(reference):
 
 def UpdateGUI():
     if gui:
-        gui.ReceiveValues()
+        gui.UpdateDeviceList()
 
 def PrintBlue(text: str):
     """
@@ -222,8 +222,8 @@ class DeviceInfo:
                 #Keep track of device and add subscription
                 connections.append(DeviceConnection(
                     connectedDevice=name,
-                    channelIndex=msg.get("selfIndex", None),
-                    channelType=msg.get("selfType", None),
+                    channelIndex=msg.get("sendingChannelIndex", None),
+                    channelType=msg.get("sendingChannelType", None),
                     selfIndex=msg["channelIndex"],
                     selfType=msg["channelType"]
                 ))
@@ -369,10 +369,15 @@ class DeviceInfo:
                 except OSError as e:
                     if getattr(e, 'errno', None) == 10060:  # Windows timeout
                         continue
+                except Exception as e:
+                    PrintGreen(f"Connection closed by remote device {self.deviceIp}")
+                    self.End()
+                    break
                 #If we receive no data, the connection is closed
                 if not data:
                     PrintGreen(f"Connection closed by remote device {self.deviceIp}")
                     self.End()
+                    break
 
                 response = self.ProcessMessage(data, self.deviceIp)
                 UpdateGUI()
