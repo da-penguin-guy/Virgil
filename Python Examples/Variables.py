@@ -12,6 +12,16 @@ selfName = None
 selfModel = None
 selfType = None
 
+gui = None
+
+def SetGUIReference(reference):
+    global gui
+    gui = reference
+
+def UpdateGUI():
+    if gui:
+        gui.ReceiveValues()
+
 def PrintBlue(text: str):
     """
     Print text in blue color with line number.
@@ -64,6 +74,7 @@ class DeviceConnection:
         self.selfIndex = selfIndex
         self.selfType = selfType
         AddSubscription(connectedDevice, selfIndex, selfType)
+        UpdateGUI()
 
     def CheckForRemove(self, connectedDevice: str, channelIndex: int, channelType: str, selfIndex: int, selfType: str):
         #If we match the given info, delete ourselves
@@ -341,6 +352,7 @@ class DeviceInfo:
         elif self.messageQueue:
             self.ongoingCommunication = True
             self.SendMessage(self.messageQueue.pop(0))
+        UpdateGUI()
         #Main loop
         while not self.disabled:
             try:
@@ -363,6 +375,7 @@ class DeviceInfo:
                     self.End()
 
                 response = self.ProcessMessage(data, self.deviceIp)
+                UpdateGUI()
                 if not response:
                     #If we don't have a response, try to pull from the message queue
                     if self.messageQueue:
@@ -568,6 +581,17 @@ def CreateEndResponse() -> dict:
     """
     return {
         "messageType": "endResponse",
+    }
+
+def CreateCommand(channelIndex: int, channelType: str, param: str, value: any) -> dict:
+    """
+    Create a parameterCommand.
+    """
+    return {
+        "messageType": "parameterCommand",
+        "channelIndex": channelIndex,
+        "channelType": channelType,
+        param: value
     }
 
 def ProcessParamChange(channelIndex: int, channelType: str, paramName: str, value: any) -> dict:

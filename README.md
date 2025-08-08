@@ -550,4 +550,3 @@ In case 3, the status update should be sent to the ip address that requested it
 # See Also
 
 - Example JSON message files in the `Example JSON/` directory
-- Server and Client example implementations in respective directories

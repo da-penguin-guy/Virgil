@@ -8,9 +8,9 @@ import threading
 import os
 import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                                QHBoxLayout, QPushButton, QLabel, QListWidget, 
-                                QTextEdit, QGroupBox)
-from PyQt6.QtCore import QTimer
+                                QHBoxLayout, QGridLayout, QPushButton, QLabel, QListWidget, 
+                                QTextEdit, QGroupBox, QComboBox, QDial)
+from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QFont
 
 
@@ -194,58 +194,173 @@ class VirgilGUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Virgil Protocol Monitor")
-        self.setGeometry(100, 100, 600, 400)
-        
-        # Set up the main widget and layout
+        self.setGeometry(100, 100, 700, 400)
+
+        # Set up the main widget and horizontal layout
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
-        layout = QVBoxLayout(main_widget)
-        
+        h_layout = QHBoxLayout(main_widget)
+
+        # --- LEFT SIDE ---
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+
         # Device info section
         info_group = QGroupBox("Device Information")
         info_layout = QVBoxLayout(info_group)
-        
+
         self.name_label = QLabel(f"Name: {Variables.selfName}")
         self.model_label = QLabel(f"Model: {Variables.selfModel}")
         self.type_label = QLabel(f"Type: {Variables.selfType}")
         self.port_label = QLabel(f"Port: {Variables.virgilPort}")
-        
+
         info_layout.addWidget(self.name_label)
         info_layout.addWidget(self.model_label)
         info_layout.addWidget(self.type_label)
         info_layout.addWidget(self.port_label)
-        layout.addWidget(info_group)
-        
+        left_layout.addWidget(info_group)
+
         # Connected devices section
         devices_group = QGroupBox("Connected Devices")
         devices_layout = QVBoxLayout(devices_group)
-        
+
         self.device_list = QListWidget()
         devices_layout.addWidget(self.device_list)
-        
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.clicked.connect(self.refresh_devices)
-        devices_layout.addWidget(refresh_btn)
-        layout.addWidget(devices_group)
 
-        
-        # Set up timer to update the GUI
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_gui)
-        self.timer.start(1000)  # Update every second
-        
-    
-    def update_gui(self):
-        """Update the GUI with current data"""
+
+        left_layout.addWidget(devices_group)
+
+        h_layout.addWidget(left_widget, stretch=1)
+
+        # --- RIGHT SIDE: device dropdown in a group ---
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+
+
+        selector_group = QGroupBox("Channel Control")
+        selector_layout = QVBoxLayout(selector_group)
+        self.deviceSelector = QComboBox()
+        selector_layout.addWidget(QLabel("Select Connection:"))
+        selector_layout.addWidget(self.deviceSelector)
+        selector_layout.addStretch(1)
+        selector_group.setLayout(selector_layout)
+        right_layout.addWidget(selector_group)
+
+        # --- 3x3 Grid of Groups ---
+        grid_widget = QWidget()
+        grid_layout = QGridLayout(grid_widget)
+
+        # Create Gain Section
+        gainGroup = QGroupBox("Gain")
+        gainLayout = QVBoxLayout(gainGroup)
+        self.gainDial : QDial = QDial()
+        self.gainDial.setMinimum(0)
+        self.gainDial.setMaximum(1000)
+        self.gainDial.setValue(0)
+        self.gainDial.valueChanged.connect(self.SendValues)
+        gainLayout.addWidget(self.gainDial)
+        self.gainValueLabel = QLabel(str(self.gainDial.value()))
+        self.gainValueLabel.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.padButton = QPushButton("Pad")
+        self.padButton.setCheckable(True)
+        self.padButton.clicked.connect(self.SendValues)
+        gainLayout.addWidget(self.gainValueLabel)
+        gainLayout.addWidget(self.padButton)
+        gainGroup.setLayout(gainLayout)
+        grid_layout.addWidget(gainGroup, 0, 0)
+
+        right_layout.addWidget(grid_widget)
+
+        h_layout.addWidget(right_widget, stretch=2)
+        self.ReceiveValues()
+
+    def ReceiveValues(self):
+        """Update the GUI with current data and persist dropdown selection"""
+        # Save current selection for the connection selector
         self.device_list.clear()
         for device_name, device_info in Variables.devices.items():
             status = "Connected" if device_info.isVirgilDevice else "Disconnected"
             self.device_list.addItem(f"{device_name} - {status}")
-    
-    def refresh_devices(self):
-        """Refresh the device list"""
-        self.update_gui()
-    
+
+        # Save current label before clearing
+        selectedLabel : str = self.deviceSelector.currentText() if self.deviceSelector.currentIndex() >= 0 else None
+        self.selectedConn : Variables.DeviceConnection = None
+        self.deviceSelector.clear()
+        for conn in Variables.connections:
+            if conn.connectedDevice not in Variables.devices or not Variables.devices[conn.connectedDevice].isVirgilDevice:
+                continue
+            # Build a readable label for each connection
+            selfType = conn.selfType if conn.selfType is not None else ""
+            selfIndex = conn.selfIndex if conn.selfIndex is not None else ""
+            channelType = conn.channelType if conn.channelType is not None else ""
+            channelIndex = conn.channelIndex if conn.channelIndex is not None else ""
+            label = f"{conn.connectedDevice}:{selfType} {selfIndex} -> {channelType} {channelIndex}"
+            self.deviceSelector.addItem(label, userData=f"{conn.connectedDevice}:{selfType}:{selfIndex}:{channelType}:{channelIndex}")
+
+            # Restore previous selection by label if possible
+            if selectedLabel is label:
+                self.deviceSelector.setCurrentIndex(self.deviceSelector.count() - 1)
+                self.selectedConn = conn
+
+        if not self.selectedConn or (self.selectedConn.channelIndex, self.selectedConn.channelType) not in Variables.devices[self.selectedConn.connectedDevice].channels:
+            self.gainDial.setEnabled(False)
+            self.padButton.setEnabled(False)
+            self.gainValueLabel.setText("NA")
+            return
+        device = Variables.devices[self.selectedConn.connectedDevice]
+        key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
+
+        if "gain" in device.channels[key]:
+            step = device.channels[key]["gain"]["precision"]
+            self.gainDial.setValue(device.channels[key]["gain"]["value"] * 10)
+            self.gainDial.setMinimum(device.channels[key]["gain"]["minValue"] * 10)
+            self.gainDial.setMaximum(device.channels[key]["gain"]["maxValue"] * 10)
+            padLevel = 0
+            if "pad" in device.channels[key] and device.channels[key]["pad"]["value"]:
+                padLevel = device.channels[key]["padLevel"]["value"]
+            # Format display based on step size
+            if round(step) == step:
+                self.gainValueLabel.setText(f"{self.gainDial.value() / 10 + padLevel:.0f}")  # No decimal places for whole numbers
+            else:
+                self.gainValueLabel.setText(f"{self.gainDial.value() / 10 + padLevel:.1f}")  # One decimal place for fractional steps
+            if not device.channels[key]["gain"]["readOnly"]:
+                self.gainDial.setEnabled(True)
+            else:
+                self.gainDial.setEnabled(False)
+        else:
+            self.gainDial.setEnabled(False)
+
+        if "pad" in device.channels[key]:
+            self.padButton.setChecked(device.channels[key]["pad"]["value"])
+            if not device.channels[key]["pad"]["readOnly"]:
+                self.padButton.setEnabled(True)
+            else:
+                self.padButton.setEnabled(False)
+        else:
+            self.padButton.setEnabled(False)
+
+        
+
+    def SendValues(self):
+        device = Variables.devices[self.selectedConn.connectedDevice]
+        key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
+        if device.channels[key]["pad"]["value"] != self.padButton.isChecked():
+            device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "pad", self.padButton.isChecked()))
+
+        if self.gainDial.isEnabled():
+            step = device.channels[key]["gain"]["precision"]
+            value = self.gainDial.value()
+            actualValue = value / 10
+
+            # For whole number steps, base the step off minValue instead of 0
+            minValue = self.gainDial.minimum() / 10
+            steps_from_min = round((actualValue - minValue) / step)
+            snapped_value = minValue + (steps_from_min * step)
+            
+
+            if device.channels[key]["gain"]["value"] != snapped_value:
+                device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "gain", snapped_value))
+
 
 # Create and run the GUI
 if not QApplication.instance():
@@ -255,13 +370,9 @@ else:
 
 gui = VirgilGUI()
 gui.show()
+Variables.SetGUIReference(gui)
 
 try:
     app.exec()
 except KeyboardInterrupt:
     Variables.PrintRed("Shutting down...")
-
-
-
-
-
