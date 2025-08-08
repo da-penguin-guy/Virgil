@@ -227,7 +227,8 @@ class DeviceInfo:
                     selfIndex=msg["channelIndex"],
                     selfType=msg["channelType"]
                 ))
-            
+                if "sendingChannelType" in msg:
+                    self.messageQueue.append(CreateInfoRequest(msg["sendingChannelIndex"], msg["sendingChannelType"]))
             elif msgType == "channelUnlink":
                 #Error Handling
                 if "channelIndex" not in msg or "channelType" not in msg:
@@ -652,6 +653,8 @@ def SendStatusUpdate(channelIndex: int, channelType: str, exclude : str, params:
                     device.messageQueue.append(response)
             except Exception as e:
                 PrintRed(f"Error sending message to device {name}: {e}")
+    if not response:
+        return None
     return response
 
 def LoadConfig(filepath: str):

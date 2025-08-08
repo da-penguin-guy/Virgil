@@ -321,8 +321,8 @@ class VirgilGUI(QMainWindow):
             Variables.PrintRed(f"Channel {key} not found in device {device.deviceName}. Refreshing...")
             self.UpdateDeviceList()
             return
-        for key,value in device.channels.items():
-            Variables.PrintYellow(f"{key}: {json.dumps(value, indent=2)}")
+
+        Variables.PrintYellow(f"{key}: {json.dumps(device.channels[key], indent=2)}")
 
         if "gain" in device.channels[key]:
             step = device.channels[key]["gain"]["precision"]
@@ -358,13 +358,13 @@ class VirgilGUI(QMainWindow):
     def SendValues(self):
         device = Variables.devices[self.selectedConn.connectedDevice]
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
-        if device.channels[key]["pad"]["value"] != self.padButton.isChecked():
+        if self.padButton.isEnabled() and device.channels[key]["pad"]["value"] != self.padButton.isChecked():
             device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "pad", self.padButton.isChecked()))
 
         if self.gainDial.isEnabled():
             step = device.channels[key]["gain"]["precision"]
             value = self.gainDial.value()
-            actualValue = value / 10
+            actualValue = round(value / 10,3)
 
             # For whole number steps, base the step off minValue instead of 0
             minValue = self.gainDial.minimum() / 10
