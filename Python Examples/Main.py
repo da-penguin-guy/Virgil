@@ -83,15 +83,6 @@ def CreateDevice(deviceName : str, deviceIp : str, sock : socket.socket = None, 
                     channelLink
                 ]
             )
-    for connection in Variables.connections:
-        if connection.connectedDevice == deviceName:
-            # Add the connection to the device's connections
-            Variables.devices[deviceName].AddChannelLink(
-                selfIndex=connection.selfIndex,
-                selfType=connection.selfType,
-                channelIndex=connection.channelIndex,
-                channelType=connection.channelType
-            )
 
 def NetListener():
     """

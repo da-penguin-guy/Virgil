@@ -76,6 +76,18 @@ class DeviceConnection:
         self.selfIndex = selfIndex
         self.selfType = selfType
         AddSubscription(connectedDevice, selfIndex, selfType)
+        if not channelIndex:
+            LinkInfo = {"deviceName" : self.connectedDevice}
+        else:
+            LinkInfo = {
+                "deviceName" : self.connectedDevice,
+                "channelIndex" : self.channelIndex,
+                "channelType" : self.channelType
+            }
+        key = (self.selfIndex, self.selfType)
+        if LinkInfo not in channels[key]["linkedChannels"]:
+            channels[key]["linkedChannels"].append(LinkInfo)
+
         UpdateGUI()
 
     def CheckForRemove(self, connectedDevice: str, channelIndex: int, channelType: str, selfIndex: int, selfType: str):
@@ -92,8 +104,21 @@ class DeviceConnection:
         Remove this connection from the subscriptions.
         """
         RemoveSubscription(self.connectedDevice, self.selfIndex, self.selfType)
+        if not self.channelIndex:
+            LinkInfo = {"deviceName" : self.connectedDevice}
+        else:
+            LinkInfo = {
+                "deviceName" : self.connectedDevice,
+                "channelIndex" : self.channelIndex,
+                "channelType" : self.channelType
+            }
+        key = (self.selfIndex, self.selfType)
+        if LinkInfo in channels[key]["linkedChannels"]:
+            channels[key]["linkedChannels"].remove(LinkInfo)
         connections.remove(self)
         UpdateGUI()
+
+        
 
 def AddSubscription(connectedDevice: str, selfIndex: int = None, selfType: str = None):
     key = (selfIndex, selfType)
@@ -524,38 +549,6 @@ class DeviceInfo:
         #Delete ourselves
         devices.pop(self.deviceName)
         UpdateGUI()
-
-    def AddChannelLink(self,selfIndex :int, selfType : str, channelIndex : int = None, channelType : str = None) -> dict:
-        """
-        Process channel linking.
-        """
-        if not channelIndex:
-            LinkInfo = {"deviceName" : self.deviceName}
-        else:
-            LinkInfo = {
-                "deviceName" : self.deviceName,
-                "channelIndex" : channelIndex,
-                "channelType" : channelType
-            }
-        key = (selfIndex, selfType)
-        if channelIndex not in self.channels[key]["linkedChannels"]:
-            self.channels[key]["linkedChannels"].append(channelIndex)
-
-    def RemoveChannelLink(self, selfIndex: int, selfType: str, channelIndex: int = None, channelType: str = None):
-        """
-        Process channel unlinking.
-        """
-        if not channelIndex:
-            LinkInfo = {"deviceName" : self.deviceName}
-        else:
-            LinkInfo = {
-                "deviceName" : self.deviceName,
-                "channelIndex" : channelIndex,
-                "channelType" : channelType
-            }
-        key = (selfIndex, selfType)
-        if channelIndex in self.channels[key]["linkedChannels"]:
-            self.channels[key]["linkedChannels"].remove(channelIndex)
 
 def GetIp() -> str:
     """
