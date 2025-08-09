@@ -193,11 +193,14 @@ class DeviceInfo:
                 #Loop over every parameter, process them, and add errors if there are any
                 for key,value in msg.items():
                     returnMessages.append(ProcessParamChange(channelIndex, channelType, key, value))
+                    PrintYellow(f"Queue after {key}: {self.messageQueue}")
 
                 #Create a status update with changes params and send it to every device except the one we're communicating with
                 response = SendStatusUpdate(channelIndex, channelType, name, list(msg.keys()))
+                PrintYellow(response)
                 returnMessages.append(response)
-            
+                PrintYellow(f"Queue after status update: {self.messageQueue}")
+
             elif msgType == "statusUpdate":
                 response = self.Update(ip, msg)
                 #If there are errors/responses, add them
@@ -636,7 +639,7 @@ def ProcessParamChange(channelIndex: int, channelType: str, paramName: str, valu
         return CreateError("InternalError", f"Parameter {paramName} has an unsupported data type: {dataType}.")
 
     channels[key][paramName]["value"] = value
-    return []
+    return None
 
 def SendStatusUpdate(channelIndex: int, channelType: str, exclude : str, params: list[str]) -> dict:
     """
@@ -653,8 +656,6 @@ def SendStatusUpdate(channelIndex: int, channelType: str, exclude : str, params:
                     device.messageQueue.append(response)
             except Exception as e:
                 PrintRed(f"Error sending message to device {name}: {e}")
-    if not response:
-        return None
     return response
 
 def LoadConfig(filepath: str):

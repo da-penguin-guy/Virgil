@@ -261,14 +261,21 @@ class VirgilGUI(QMainWindow):
         self.gainDial.setMaximum(1000)
         self.gainDial.setValue(0)
         self.gainDial.valueChanged.connect(self.SendValues)
+        self.gainDial.setNotchesVisible(True)
+        self.gainDial.setEnabled(False)
         gainLayout.addWidget(self.gainDial)
+
         self.gainValueLabel = QLabel(str(self.gainDial.value()))
         self.gainValueLabel.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.gainValueLabel.setText("NA")
+        gainLayout.addWidget(self.gainValueLabel)
+
         self.padButton = QPushButton("Pad")
         self.padButton.setCheckable(True)
+        self.padButton.setEnabled(False)
         self.padButton.clicked.connect(self.SendValues)
-        gainLayout.addWidget(self.gainValueLabel)
         gainLayout.addWidget(self.padButton)
+
         gainGroup.setLayout(gainLayout)
         grid_layout.addWidget(gainGroup, 0, 0)
 
@@ -357,7 +364,7 @@ class VirgilGUI(QMainWindow):
 
     def SendValues(self):
         if not self.selectedConn:
-            self.ReceiveValues()
+            self.UpdateDeviceList()
             return
         device = Variables.devices[self.selectedConn.connectedDevice]
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
