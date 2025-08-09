@@ -92,9 +92,7 @@ class DeviceConnection:
         Remove this connection from the subscriptions.
         """
         RemoveSubscription(self.connectedDevice, self.selfIndex, self.selfType)
-        #This if statement is only needed because i'm not actually using dante
-        if(self.channelType != "rx" or self.channelIndex is None):
-            connections.remove(self)
+        connections.remove(self)
         UpdateGUI()
 
 def AddSubscription(connectedDevice: str, selfIndex: int = None, selfType: str = None):
@@ -238,6 +236,13 @@ class DeviceInfo:
                     selfType=msg["channelType"]
                 ))
 
+                self.AddChannelLink(
+                    selfIndex=msg["channelIndex"],
+                    selfType=msg["channelType"],
+                    channelIndex=msg.get("sendingChannelIndex", None),
+                    channelType=msg.get("sendingChannelType", None)
+                )
+
                 if "sendingChannelType" in msg:
                     self.messageQueue.append(CreateInfoRequest(msg["sendingChannelIndex"], msg["sendingChannelType"]))
             elif msgType == "channelUnlink":
@@ -251,11 +256,18 @@ class DeviceInfo:
                 for conn in connections:
                     conn.CheckForRemove(
                         connectedDevice=name,
-                        channelIndex=msg.get("selfIndex", None),
-                        channelType=msg.get("selfType", None),
+                        channelIndex=msg.get("sendingChannelIndex", None),
+                        channelType=msg.get("sendingChannelType", None),
                         selfIndex=msg["channelIndex"],
                         selfType=msg["channelType"],
                     )
+
+                self.RemoveChannelLink(
+                    selfIndex=msg["channelIndex"],
+                    selfType=msg["channelType"],
+                    channelIndex=msg.get("sendingChannelIndex", None),
+                    channelType=msg.get("sendingChannelType", None)
+                )
 
             elif msgType == "infoRequest":
                 #Error Handling
@@ -507,11 +519,43 @@ class DeviceInfo:
         self.disabled = True
         #Unsubscribe from all connections
         for conn in connections:
-            if conn.connectedDevice == self.deviceName:
+            if conn.connectedDevice == self.deviceName and conn.channelType != "rx":
                 conn.Remove()
         #Delete ourselves
         devices.pop(self.deviceName)
         UpdateGUI()
+
+    def AddChannelLink(self,selfIndex :int, selfType : str, channelIndex : int = None, channelType : str = None) -> dict:
+        """
+        Process channel linking.
+        """
+        if not channelIndex:
+            LinkInfo = {"deviceName" : self.deviceName}
+        else:
+            LinkInfo = {
+                "deviceName" : self.deviceName,
+                "channelIndex" : channelIndex,
+                "channelType" : channelType
+            }
+        key = (selfIndex, selfType)
+        if channelIndex not in self.channels[key]["linkedChannels"]:
+            self.channels[key]["linkedChannels"].append(channelIndex)
+
+    def RemoveChannelLink(self, selfIndex: int, selfType: str, channelIndex: int = None, channelType: str = None):
+        """
+        Process channel unlinking.
+        """
+        if not channelIndex:
+            LinkInfo = {"deviceName" : self.deviceName}
+        else:
+            LinkInfo = {
+                "deviceName" : self.deviceName,
+                "channelIndex" : channelIndex,
+                "channelType" : channelType
+            }
+        key = (selfIndex, selfType)
+        if channelIndex in self.channels[key]["linkedChannels"]:
+            self.channels[key]["linkedChannels"].remove(channelIndex)
 
 def GetIp() -> str:
     """
