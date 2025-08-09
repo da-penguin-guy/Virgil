@@ -356,6 +356,9 @@ class VirgilGUI(QMainWindow):
         
 
     def SendValues(self):
+        if not self.selectedConn:
+            self.ReceiveValues()
+            return
         device = Variables.devices[self.selectedConn.connectedDevice]
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
         if self.padButton.isEnabled() and device.channels[key]["pad"]["value"] != self.padButton.isChecked():
