@@ -10,7 +10,7 @@ In previous versions of the virgil protocol, devices were categorized in Master/
 
 All networked communication should occur using the UTF-8 encoding.
 
-At the start of every message should be a 4 byte unsigned big endian integer indicating the length of the message (excluding the integer itself)
+At the start of every message should be a 4 byte unsigned big endian integer indicating the length of the message in bytes (excluding the integer itself)
 
 TCP sockets should open when the devices boot up and only close once one of the devices goes offline
 
