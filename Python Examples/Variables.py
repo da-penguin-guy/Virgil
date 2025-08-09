@@ -237,21 +237,6 @@ class DeviceInfo:
                     selfIndex=msg["channelIndex"],
                     selfType=msg["channelType"]
                 ))
-                key = (msg["channelIndex"], msg["channelType"])
-                if msg["channelType"] == "aux":
-                    channelInfo = {
-                        "deviceName": name
-                    }
-                else:
-                    channelInfo = {
-                        "deviceName": name,
-                        "channelIndex": msg["sendingChannelIndex"],
-                        "channelType": msg["sendingChannelType"]
-                    }
-                if channelInfo not in self.channels[key]["linkedChannels"]:
-                    self.channels[key]["linkedChannels"].append(channelInfo)
-                else:
-                    PrintRed(f"Channel info already exists: {channelInfo}. Not fatal, so no error will be sent")
 
                 if "sendingChannelType" in msg:
                     self.messageQueue.append(CreateInfoRequest(msg["sendingChannelIndex"], msg["sendingChannelType"]))
@@ -271,22 +256,6 @@ class DeviceInfo:
                         selfIndex=msg["channelIndex"],
                         selfType=msg["channelType"],
                     )
-
-                key = (msg["channelIndex"], msg["channelType"])
-                if msg["channelType"] == "aux":
-                    channelInfo = {
-                        "deviceName": name
-                    }
-                else:
-                    channelInfo = {
-                        "deviceName": name,
-                        "channelIndex": msg["sendingChannelIndex"],
-                        "channelType": msg["sendingChannelType"]
-                    }
-                if channelInfo in self.channels[key]["linkedChannels"]:
-                    self.channels[key]["linkedChannels"].remove(channelInfo)
-                else:
-                    PrintRed(f"Channel does not exist: {channelInfo}. Not fatal, so no error will be sent")
 
             elif msgType == "infoRequest":
                 #Error Handling
