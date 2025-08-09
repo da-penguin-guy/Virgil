@@ -21,8 +21,14 @@ def SetGUIReference(reference):
     gui = reference
 
 def UpdateGUI():
+    """Thread-safe GUI update - can be called from any thread"""
     if gui:
-        gui.UpdateDeviceList()
+        gui.deviceListUpdateSignal.emit()
+
+def UpdateGUIValues():
+    """Thread-safe GUI values update - can be called from any thread"""
+    if gui:
+        gui.valuesUpdateSignal.emit()
 
 def PrintBlue(text: str):
     """
@@ -462,9 +468,9 @@ class DeviceInfo:
 
             #Make sure it doesn't crash
             except Exception as e:
-                PrintRed(f"Error in device {self.deviceName} communication: {e} \n{traceback.format_exc()}")
-                if not self.disabled:
+                if self.disabled:
                     break
+                PrintRed(f"Error in device {self.deviceName} communication: {e} \n{traceback.format_exc()}")
                 continue
 
     def Update(self, ip: str, infoResponse: dict) -> list[dict]:
@@ -527,6 +533,7 @@ class DeviceInfo:
                     # Overwrite or add new key
                     self.channels[(channelIndex, channelType)][key] = value
         #If we've reached here, we have no errors
+        UpdateGUIValues()  # Update GUI when channel data changes
         return None
 
     def End(self):
@@ -711,6 +718,7 @@ def ProcessParamChange(channelIndex: int, channelType: str, paramName: str, valu
         return CreateError("InternalError", f"Parameter {paramName} has an unsupported data type: {dataType}.")
 
     channels[key][paramName]["value"] = value
+    UpdateGUIValues()  # Update GUI when parameter values change
     return None
 
 def SendStatusUpdate(channelIndex: int, channelType: str, exclude : str, params: list[str]) -> dict:

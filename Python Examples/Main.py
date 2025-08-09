@@ -1,3 +1,4 @@
+import traceback
 import Variables
 import os
 os.system('cls' if os.name == 'nt' else 'clear')
@@ -11,7 +12,7 @@ import struct
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                 QHBoxLayout, QGridLayout, QPushButton, QLabel, QListWidget, 
                                 QGroupBox, QComboBox, QDial)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
 
 
@@ -166,14 +167,14 @@ else:
         try:
             idx = int(choice) - 1
             if idx < 0 or idx >= len(configFiles):
-                Variables.PrintRed("Invalid selection.")
+                Variables.PrintRed(f"Invalid selection.\n {traceback.format_exc()}")
                 continue
             selectedFile = configFiles[idx]
             print(f"You selected: {selectedFile}")
             Variables.LoadConfig(selectedFile)
             break
         except ValueError:
-            Variables.PrintRed("Invalid selection.")
+            Variables.PrintRed(f"Invalid selection. \n {traceback.format_exc()}")
 
 
 service_type = "_virgil._tcp.local."
@@ -212,12 +213,25 @@ browser = ServiceBrowser(zeroconf, "_virgil._tcp.local.", MDNSListener())
 
 # PyQt GUI
 class VirgilGUI(QMainWindow):
+    # Thread-safe signals for GUI updates
+    deviceListUpdateSignal = pyqtSignal()
+    valuesUpdateSignal = pyqtSignal()
+    
     selectedConn: Variables.DeviceConnection = None
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Virgil Protocol Monitor")
         self.setGeometry(100, 100, 700, 400)
+
+        # Connect signals to slot methods for thread-safe GUI updates
+        self.deviceListUpdateSignal.connect(self.UpdateDeviceList)
+        self.valuesUpdateSignal.connect(self.ReceiveValues)
+
+        # Set up a timer for periodic GUI updates (optional safety measure)
+        self.updateTimer = QTimer()
+        self.updateTimer.timeout.connect(self.ReceiveValues)
+        self.updateTimer.start(100)  # Update every 100ms
 
         # Set up the main widget and horizontal layout
         main_widget = QWidget()
@@ -303,8 +317,9 @@ class VirgilGUI(QMainWindow):
 
         h_layout.addWidget(right_widget, stretch=2)
         self.ReceiveValues()
-
+    
     def UpdateDeviceList(self):
+        """Internal slot method that actually updates the device list - runs on GUI thread"""
         # Save current selection for the connection selector
         self.device_list.clear()
         for device_name, device_info in Variables.devices.items():
@@ -333,10 +348,17 @@ class VirgilGUI(QMainWindow):
             return
 
     def ReceiveValues(self):
+        """Internal slot method that actually updates the values - runs on GUI thread"""
         """Update the GUI with current data and persist dropdown selection"""
         self.selectedConn = self.deviceSelector.currentData()
         if not self.selectedConn:
             return
+        
+        # Check if device still exists and is connected
+        if (self.selectedConn.connectedDevice not in Variables.devices or 
+            not Variables.devices[self.selectedConn.connectedDevice].isVirgilDevice):
+            return
+            
         device = Variables.devices[self.selectedConn.connectedDevice]
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
         if key not in device.channels:
@@ -378,6 +400,12 @@ class VirgilGUI(QMainWindow):
         if not self.selectedConn:
             self.UpdateDeviceList()
             return
+        
+        # Check if device still exists and is connected
+        if (self.selectedConn.connectedDevice not in Variables.devices or 
+            not Variables.devices[self.selectedConn.connectedDevice].isVirgilDevice):
+            return
+            
         device = Variables.devices[self.selectedConn.connectedDevice]
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
         if self.padButton.isEnabled() and device.channels[key]["pad"]["value"] != self.padButton.isChecked():
