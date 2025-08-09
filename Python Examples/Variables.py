@@ -451,11 +451,23 @@ class DeviceInfo:
             self.channels[(channelIndex,channelType)] = {}
 
         #If the message is an infoResponse, it should overwrite the existing entry
+        PrintYellow(self.channels[(channelIndex,channelType)])
         if messageType == "infoResponse":
             self.channels[(channelIndex,channelType)] = infoResponse
         else:
-            self.channels[(channelIndex,channelType)].update(infoResponse)
-        
+            # Merge infoResponse into the channel dict, preserving nested dicts (like 'gain')
+            for key, value in infoResponse.items():
+                if (
+                    key in self.channels[(channelIndex, channelType)]
+                    and isinstance(self.channels[(channelIndex, channelType)][key], dict)
+                    and isinstance(value, dict)
+                ):
+                    # Update only the keys in the nested dict, e.g., update 'value' in 'gain'
+                    self.channels[(channelIndex, channelType)][key].update(value)
+                else:
+                    # Overwrite or add new key
+                    self.channels[(channelIndex, channelType)][key] = value
+        PrintYellow(self.channels[(channelIndex,channelType)])
         #If we've reached here, we have no errors
         return None
 
