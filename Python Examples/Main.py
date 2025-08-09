@@ -261,7 +261,6 @@ class VirgilGUI(QMainWindow):
         self.gainDial.setMaximum(1000)
         self.gainDial.setValue(0)
         self.gainDial.valueChanged.connect(self.SendValues)
-        self.gainDial.setNotchesVisible(True)
         self.gainDial.setEnabled(False)
         gainLayout.addWidget(self.gainDial)
 

@@ -192,14 +192,14 @@ class DeviceInfo:
 
                 #Loop over every parameter, process them, and add errors if there are any
                 for key,value in msg.items():
-                    returnMessages.append(ProcessParamChange(channelIndex, channelType, key, value))
-                    PrintYellow(f"Queue after {key}: {self.messageQueue}")
+                    error = ProcessParamChange(channelIndex, channelType, key, value)
+                    if error:
+                        returnMessages.append(error)
 
                 #Create a status update with changes params and send it to every device except the one we're communicating with
                 response = SendStatusUpdate(channelIndex, channelType, name, list(msg.keys()))
-                PrintYellow(response)
-                returnMessages.append(response)
-                PrintYellow(f"Queue after status update: {self.messageQueue}")
+                if response:
+                    returnMessages.append(response)
 
             elif msgType == "statusUpdate":
                 response = self.Update(ip, msg)
