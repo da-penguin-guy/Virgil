@@ -84,7 +84,6 @@ class DeviceConnection:
                 "channelIndex" : self.channelIndex,
                 "channelType" : self.channelType
             }
-        PrintYellow(f"Creating Connection: {LinkInfo}")
         key = (self.selfIndex, self.selfType)
         if LinkInfo not in channels[key]["linkedChannels"]:
             channels[key]["linkedChannels"].append(LinkInfo)
@@ -265,7 +264,7 @@ class DeviceInfo:
                 if "sendingChannelType" in msg:
                     self.messageQueue.append(CreateInfoRequest(msg["sendingChannelIndex"], msg["sendingChannelType"]))
 
-                response = SendStatusUpdate(channelIndex, channelType, name, ["linkedChannels"])
+                response = SendStatusUpdate(msg["channelIndex"], msg["channelType"], name, ["linkedChannels"])
                 if response:
                     returnMessages.append(response)
 
@@ -463,9 +462,9 @@ class DeviceInfo:
 
             #Make sure it doesn't crash
             except Exception as e:
+                PrintRed(f"Error in device {self.deviceName} communication: {e} \n{traceback.format_exc()}")
                 if not self.disabled:
                     break
-                PrintRed(f"Error in device {self.deviceName} communication: {e} \n{traceback.format_exc()}")
                 continue
 
     def Update(self, ip: str, infoResponse: dict) -> list[dict]:
