@@ -264,6 +264,12 @@ class DeviceInfo:
 
                 if "sendingChannelType" in msg:
                     self.messageQueue.append(CreateInfoRequest(msg["sendingChannelIndex"], msg["sendingChannelType"]))
+
+                response = SendStatusUpdate(channelIndex, channelType, name, ["linkedChannels"])
+                if response:
+                    returnMessages.append(response)
+
+
             elif msgType == "channelUnlink":
                 #Error Handling
                 if "channelIndex" not in msg or "channelType" not in msg:
@@ -280,6 +286,10 @@ class DeviceInfo:
                         selfIndex=msg["channelIndex"],
                         selfType=msg["channelType"],
                     )
+
+                response = SendStatusUpdate(channelIndex, channelType, name, ["linkedChannels"])
+                if response:
+                    returnMessages.append(response)
 
 
             elif msgType == "infoRequest":
