@@ -5,6 +5,7 @@ import threading
 import time
 import json
 import inspect
+import struct
 
 virgilPort = 7889
 
@@ -121,6 +122,8 @@ class DeviceInfo:
     sock : socket.socket = None
     messageQueue : list[list[dict]] = []
     disabled = False
+    # Internal buffer for TCP stream reassembly (length-prefixed framing)
+    recv_buffer: bytearray = bytearray()
 
 
     def __init__(self, deviceName: str, ip: str, sock : socket.socket = None, startingMessage: bytes = None, queue: list[list[dict]] = []):
@@ -132,10 +135,12 @@ class DeviceInfo:
         """
         Send a JSON object to the specified IP using TCP.
         """
-        #Send via TCP
+        # Send via TCP with a 4-byte big-endian length prefix
         jsonInfo = json.dumps(CreateBase(messages))
+        payload = jsonInfo.encode('utf-8')
+        header = struct.pack('!I', len(payload))
         PrintBlue(f"Sending message to {self.deviceIp}: \n {jsonInfo}")
-        self.sock.sendall(jsonInfo.encode('utf-8'))
+        self.sock.sendall(header + payload)
 
 
     def ProcessMessage(self, raw : bytes, ip : str):
@@ -310,6 +315,8 @@ class DeviceInfo:
         self.deviceName = deviceName
         self.deviceIp = ip
         self.messageQueue = queue
+    # Reset stream buffer for this connection
+        self.recv_buffer = bytearray()
         PrintGreen(f"Device {self.deviceName} started with IP {self.deviceIp}.")
         PrintGreen(f"Device {self.deviceName} is {'connected' if self.sock else 'not connected'}.")
         try:
@@ -372,7 +379,8 @@ class DeviceInfo:
                 except (BlockingIOError, TimeoutError):
                     continue
                 except OSError as e:
-                    if getattr(e, 'errno', None) == 10060:  # Windows timeout
+                    # 10035: WSAEWOULDBLOCK (non-blocking no data), 10060: timeout
+                    if getattr(e, 'errno', None) in (10035, 10060):
                         continue
                 except Exception as e:
                     PrintGreen(f"Connection closed by remote device {self.deviceIp}")
@@ -383,23 +391,39 @@ class DeviceInfo:
                     PrintGreen(f"Connection closed by remote device {self.deviceIp}")
                     self.End()
                     break
+                # Append to buffer and process complete frames (4-byte big-endian length prefix)
+                self.recv_buffer.extend(data)
+                while True:
+                    if len(self.recv_buffer) < 4:
+                        # Not enough for header yet
+                        break
+                    msg_len = struct.unpack('!I', self.recv_buffer[:4])[0]
+                    if len(self.recv_buffer) < 4 + msg_len:
+                        # Wait for the full payload
+                        break
+                    # Extract one full message
+                    start = 4
+                    end = 4 + msg_len
+                    message_bytes = bytes(self.recv_buffer[start:end])
+                    del self.recv_buffer[:end]
 
-                response = self.ProcessMessage(data, self.deviceIp)
-                UpdateGUI()
-                if not response:
-                    #If we don't have a response, try to pull from the message queue
-                    if self.messageQueue:
-                        self.ongoingCommunication = True
-                        response = self.messageQueue.pop(0)
-                    #If the queue is empty and we are still communicating, indicate that we're done
-                    elif self.ongoingCommunication:
-                        self.ongoingCommunication = False
-                        response = CreateEndResponse()
-                    #Otherwise, just skip
-                    else:
-                        continue
-                #Send the response
-                self.SendMessage(response)
+                    # Process the complete message
+                    response = self.ProcessMessage(message_bytes, self.deviceIp)
+                    UpdateGUI()
+                    if not response:
+                        #If we don't have a response, try to pull from the message queue
+                        if self.messageQueue:
+                            self.ongoingCommunication = True
+                            response = self.messageQueue.pop(0)
+                        #If the queue is empty and we are still communicating, indicate that we're done
+                        elif self.ongoingCommunication:
+                            self.ongoingCommunication = False
+                            response = CreateEndResponse()
+                        #Otherwise, just skip
+                        else:
+                            continue
+                    #Send the response
+                    self.SendMessage(response)
 
             #Make sure it doesn't crash
             except Exception as e:

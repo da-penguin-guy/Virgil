@@ -80,5 +80,8 @@
         "xutility": "cpp"
     },
     "cmake.sourceDirectory": "C:/Users/robot/OneDrive/Desktop/Virgil/Master_Example",
-    "python-envs.pythonProjects": []
+    "python-envs.pythonProjects": [],
+    "cSpell.words": [
+        "rlist"
+    ]
 }

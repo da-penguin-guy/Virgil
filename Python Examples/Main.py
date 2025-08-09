@@ -7,6 +7,7 @@ import json
 import threading
 import os
 import sys
+import struct
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                 QHBoxLayout, QGridLayout, QPushButton, QLabel, QListWidget, 
                                 QGroupBox, QComboBox, QDial)
@@ -102,14 +103,33 @@ def NetListener():
             remote_ip = addr[0]
             Variables.PrintGreen(f"Accepted connection from {remote_ip}")
             try:
-                #Receive initial data
-                data = sock.recv(4096)
-                #If data is empty, the other side already closed the connection
-                if not data:
-                   sock.close()
-                   continue
-                #parse JSON
-                j: dict= json.loads(data.decode('utf-8'))
+                # Receive and parse length-prefixed message
+                recv_buffer = bytearray()
+                
+                # First, get the 4-byte length header
+                while len(recv_buffer) < 4:
+                    chunk = sock.recv(4 - len(recv_buffer))
+                    if not chunk:
+                        sock.close()
+                        continue
+                    recv_buffer.extend(chunk)
+                
+                # Extract message length
+                msg_len = struct.unpack('!I', recv_buffer[:4])[0]
+                
+                # Now receive the full message payload
+                while len(recv_buffer) < 4 + msg_len:
+                    chunk = sock.recv(4 + msg_len - len(recv_buffer))
+                    if not chunk:
+                        sock.close()
+                        continue
+                    recv_buffer.extend(chunk)
+                
+                # Extract the JSON message
+                message_bytes = bytes(recv_buffer[4:4 + msg_len])
+                
+                # Parse JSON
+                j: dict = json.loads(message_bytes.decode('utf-8'))
                 deviceName = j.get("transmittingDevice")
                 if not deviceName:
                     sock.close()
@@ -121,7 +141,7 @@ def NetListener():
                     sock.close()
                     continue
                 #Create new device, passing it the message we already got and the pre-existing socket
-                CreateDevice(deviceName, remote_ip, sock, data)
+                CreateDevice(deviceName, remote_ip, sock, message_bytes)
             except Exception as e:
                 # Handle any errors in receiving or processing the initial data
                 Variables.PrintRed(f"Error receiving initial data from {remote_ip}: {e}")
