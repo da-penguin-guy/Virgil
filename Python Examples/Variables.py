@@ -579,9 +579,10 @@ def CreateStatusUpdate(channelIndex: int, channelType: str = "", params : list[s
             continue
         if key in params or not params:
             if isinstance(value, dict):
-                response[key] = value.get("value", None)
+                response[key] = {"value": value.get("value", None)}
             else:
-                response[key] = {"value": value}
+                #Exception for linkedChannels
+                response[key] = value
     return response
 
 def CreateEndResponse() -> dict:
