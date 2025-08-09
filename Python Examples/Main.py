@@ -9,9 +9,8 @@ import os
 import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                 QHBoxLayout, QGridLayout, QPushButton, QLabel, QListWidget, 
-                                QTextEdit, QGroupBox, QComboBox, QDial)
-from PyQt6.QtCore import QTimer, Qt
-from PyQt6.QtGui import QFont
+                                QGroupBox, QComboBox, QDial)
+from PyQt6.QtCore import Qt
 
 
 
@@ -26,9 +25,11 @@ found_devices = []
 class MDNSListener:
     def remove_service(self, zeroconf, type, name):
         # Remove device from found_devices if present
-        if name in found_devices:
-            found_devices.remove(name)
-            Variables.PrintBlue(f"Device removed: {name}")
+        base_name = name.split('.')[0] 
+        if base_name in found_devices:
+            found_devices.remove(base_name)
+            Variables.PrintBlue(f"Device removed: {base_name}")
+        gui.UpdateDeviceList()
 
     def update_service(self, zeroconf, type, name):
         # Handle service updates - can be empty if not needed

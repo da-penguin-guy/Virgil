@@ -1,4 +1,5 @@
 from socket import socket
+import traceback
 import socket
 import threading
 import time
@@ -92,7 +93,8 @@ class DeviceConnection:
         RemoveSubscription(self.connectedDevice, self.selfIndex, self.selfType)
         #This if statement is only needed because i'm not actually using dante
         if(self.channelType != "rx" or self.channelIndex is None):
-            connections.pop(self)
+            connections.remove(self)
+        UpdateGUI()
 
 def AddSubscription(connectedDevice: str, selfIndex: int = None, selfType: str = None):
     key = (selfIndex, selfType)
@@ -403,7 +405,7 @@ class DeviceInfo:
             except Exception as e:
                 if not self.disabled:
                     break
-                PrintRed(f"Error in device {self.deviceName} communication: {e}")
+                PrintRed(f"Error in device {self.deviceName} communication: {e} \n{traceback.format_exc()}")
                 continue
 
     def Update(self, ip: str, infoResponse: dict) -> list[dict]:
@@ -484,6 +486,7 @@ class DeviceInfo:
                 conn.Remove()
         #Delete ourselves
         devices.pop(self.deviceName)
+        UpdateGUI()
 
 def GetIp() -> str:
     """
