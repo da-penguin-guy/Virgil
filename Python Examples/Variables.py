@@ -581,7 +581,7 @@ def CreateStatusUpdate(channelIndex: int, channelType: str = "", params : list[s
             if isinstance(value, dict):
                 response[key] = value.get("value", None)
             else:
-                response[key] = value
+                response[key] = {"value": value}
     return response
 
 def CreateEndResponse() -> dict:

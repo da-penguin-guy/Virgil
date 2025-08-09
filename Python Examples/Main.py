@@ -327,9 +327,6 @@ class VirgilGUI(QMainWindow):
             Variables.PrintRed(f"Channel {key} not found in device {device.deviceName}. Refreshing...")
             self.UpdateDeviceList()
             return
-
-        Variables.PrintYellow(f"{key}: {json.dumps(device.channels[key], indent=2)}")
-
         if "gain" in device.channels[key]:
             step = device.channels[key]["gain"]["precision"]
             self.gainDial.setValue(device.channels[key]["gain"]["value"] * 10)
