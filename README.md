@@ -1,6 +1,6 @@
 # Virgil Protocol 2.0.0
 
-Virgil is a network protocol for controlling audio devices using JSON-formatted messages over TCP. It uses mDNS for device discovery and supports real-time parameter control and status monitoring.
+Virgil is a network protocol for controlling audio devices using JSON-formatted messages over TCP. It uses mDNS for Virgil Controller and supports real-time parameter control and status monitoring.
 
 **This is Virgil Protocol 2.0.0**
 
@@ -12,20 +12,16 @@ All networked communication should occur using the UTF-8 encoding.
 
 At the start of every message should be a 4 byte unsigned big endian integer indicating the length of the message in bytes (excluding the integer itself)
 
-TCP sockets should open when the devices boot up and only close once one of the devices goes offline
+TCP sockets should open when the devices connect and only close once one of the devices goes offline
 
 **Watch out for race conditions when managing TCP socket connections.** If two devices attempt to connect simultaneously, ensure your code properly handles duplicate or conflicting connections.
-
-Keep track of the last time a message was received from each device. If 2 seconds has gone by without a device message, send a statusRequest on one of your linked channels
-
-
-
 
 
 # mDNS Overview
 
 Virgil uses a typical mDNS configuration. It is advertised over `224.0.0.251` at port `5353`  
-The protocol will (almost) fully function on a network that doesn't support mDNS. mDNS is only used for a dante controller like app and detecting accessories 
+The protocol will (almost) fully function on a network that doesn't support mDNS.
+mDNS is only used for Virgil Controller.
 
 ### Service Configuration
 - **serviceType**: `_virgil._tcp_.local.`
@@ -34,62 +30,46 @@ The protocol will (almost) fully function on a network that doesn't support mDNS
   + **model**: The model of the device (eg. M32)
   + **deviceType**: The type of device it is. For more information and allowed values, go to [Device Types](#device-types)
 
-**Example mDNS Service Advertisement:**
-```jsonc
-{
-  "serviceType": "_virgil._udp.local.",
-  "serviceName": "ExampleClient._virgil._udp.local.",
-  "txt": {
-    "model": "DeviceModelName",
-    "deviceType": "digitalStageBox"
-  }
-}
-```
-mDNS isn't actually json, but this is the best way I could represent it
-
-
 
 # Message Types
 
-| Type                | Description                                          | Protocol|
-|---------------------|------------------------------------------------------|---------|
-| parameterCommand    | Set or change a parameter on a device/channel        | TCP     |
-| statusUpdate        | Notify parameter or device state change              | TCP     |
-| statusRequest       | Sent to a device to request a status update          | TCP     |
-| channelLink         | A message telling a device it's linked channels      | TCP     |
-| channelUnlink       | A message telling a device to unlink channels        | TCP     |
-| infoRequest		      | A message requesting information on a device/channel | TCP	   |
-| infoResponse 		    | A response to an infoRequest 						             | TCP     |
-| errorResponse       | A message containing an error						             | TCP     |
-| subscribeRequest    | A message subscribing to a certain channel           | TCP     |
-| unsubscribeRequest  | A message unsubscribing from a certain channel       | TCP     |
-| endResponse         | A message saying that the device had no response     | TCP     |
+| Type                | Description                                              | Protocol|
+|---------------------|----------------------------------------------------------|---------|
+| parameterCommand    | Used to set or change a parameter on a channel           | TCP     |
+| statusUpdate        | Used to notify devices of a changed parameter            | TCP     |
+| statusRequest       | Used to request a status update                          | TCP     |
+| channelLink         | Used to represent that 2 channels are linked in dante    | TCP     |
+| channelUnlink       | Used to undo a channelLink                               | TCP     |
+| infoRequest		      | Used to request information on a device/channel          | TCP	   |
+| infoResponse 		    | Used to respond to an infoRequest					               | TCP     |
+| errorResponse       | Used to convey an error				                           | TCP     |
+| subscribeRequest    | Used to tell a device to inform the sender of any parameter changes for a given channel         | TCP     |
+| unsubscribeRequest  | Used to undo a subscribeRequest                          | TCP     |
+| endResponse         | Used to say that the sender has no response              | TCP     |
 
-### Message Usage
-- **parameterCommand**: Change gain, pad, phantom power, etc.
-- **statusUpdate**: Automatic notifications when parameters change (or after a statusRequest)
-- **statusRequest**: To request a status update
-- **channelLink**: When first connecting to a device
-- **channelUnlink**: In case a mistake was made or dante subscriptions changed
-- **infoRequest**: To get what parameters a channel has
-- **infoResponse**: To answer an infoRequest
-- **errorResponse**: To tell a device an error has occurred
-- **subscribeMessage**: This isn't intended to be used by actual devices. You should instead [link channels](#linking-channels). This is meant for a dante-controller type app
-- **unsubscribeMessage**: This isn't intended to be used by actual devices. You should instead [link channels](#linking-channels). This is meant for a dante-controller type app
-- **endResponse**: When you don't have a response
 
 
 # Channel Types
 There are 3 types of channels. They are `tx`, `rx`, and `aux`  
-`tx` and `rx` channels correspond with Dante transmitting and receiving channels. For every dante channel a device has, it must have a corresponding tx/rx channel  
-tx/rx channels can be linked together. For more information, go to [Linking Channels](#linking-channels)  
+
+`tx` and `rx` channels correspond with Dante transmitting and receiving channels. Every dante channel must have a corresponding Virgil channel  
+For example, if a dante device had 12 transmitting channels and 8 receiving channels, the device would advertise over virgil that it has 12 `tx` channels and 8 `rx` channels.
+
+tx/rx channels can be linked together to represent the flow of audio via Dante. For more information, go to [Linking Channels](#linking-channels)  
+
 Aux channels do not have a Dante equivalent. They are instead used for sending simple values to a device (Think an in-wall dial connected to a mixer)  
 Aux channels can be linked to a device, not another channel. For more information, go to [Linking Channels](#linking-channels)  
 
 Channel indices start at 0
 
 ## Linking Channels
-Channels are linked together to represent the flow of data. Linking to a channel automatically subscribes each device to its corresponding channel. Rx channels can only be linked to Tx channels. Either side can initiate the link by sending a channelLink.  
+Channels are linked together to represent the flow of data via Dante. If channels are subscribed in Dante, they must be linked in virgil
+
+Linking to a channel automatically subscribes each device to its corresponding channel. 
+
+Rx channels can only be linked to Tx channels and vice versa. 
+
+Either side can initiate the link by sending a channelLink.  
 
 Aux channels can only be linked to another device. Only the device can initiate the link.
 
@@ -97,7 +77,7 @@ Aux channels can only be linked to another device. Only the device can initiate 
 
 Virgil supports various audio parameters. `gain` is mandatory for all channels involving a preamp, even on fixed-gain preamps.
 
-There is also a `linkedChannels` parameter. This is to be treated as all other parameter, but it is mandatory.  
+There is also a `linkedChannels` parameter. This is to be treated as any other parameter, but it is mandatory.  
 It is an array containing information on what channels are linked to said channel.  
 This is an array to account for tx channels being able to be connected to several rx channels in dante.  
 `linkedChannels` should start empty and be added to as channels are linked/unlinked
@@ -109,11 +89,20 @@ This is an array to account for tx channels being able to be connected to severa
     "deviceName" : "connectedDeviceName",
     "channelIndex" : 0, // The connected channel index
     "channelType" : "rx"
-  }
+  },
   {
     "deviceName" : "otherConnectedDevice",
     "channelIndex" : 1, // The connected channel index
     "channelType" : "rx"
+  },
+]
+```
+
+If the channel is an aux channel:
+```jsonc
+"linkedChannels": [
+  {
+    "deviceName" : "connectedDeviceName"
   }
 ]
 ```
