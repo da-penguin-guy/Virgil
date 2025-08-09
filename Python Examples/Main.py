@@ -291,24 +291,19 @@ class VirgilGUI(QMainWindow):
             self.device_list.addItem(f"{device_name} - {status}")
 
         # Save current label before clearing
-        selectedLabel : str = self.deviceSelector.currentText() if self.deviceSelector.currentIndex() >= 0 else None
-        self.selectedConn : Variables.DeviceConnection = None
+        self.selectedConn : Variables.DeviceConnection = self.deviceSelector.currentData()
         self.deviceSelector.clear()
         for conn in Variables.connections:
             if conn.connectedDevice not in Variables.devices or not Variables.devices[conn.connectedDevice].isVirgilDevice:
                 continue
             # Build a readable label for each connection
-            selfType = conn.selfType if conn.selfType else ""
-            selfIndex = conn.selfIndex + 1 if conn.selfIndex is not None else ""
             channelType = conn.channelType if conn.channelType else ""
             channelIndex = conn.channelIndex + 1 if conn.channelIndex is not None else ""
-            label = f"{conn.connectedDevice}:{selfType} {selfIndex} -> {channelType} {channelIndex}"
+            label = f"{conn.connectedDevice}: {channelType} {channelIndex}"
             self.deviceSelector.addItem(label, userData=conn)
 
-            # Restore previous selection by label if possible
-            if selectedLabel is label:
+            if conn is self.selectedConn:
                 self.deviceSelector.setCurrentIndex(self.deviceSelector.count() - 1)
-                self.selectedConn = conn
 
         if not self.selectedConn or (self.selectedConn.channelIndex, self.selectedConn.channelType) not in Variables.devices[self.selectedConn.connectedDevice].channels:
             self.gainDial.setEnabled(False)
@@ -329,9 +324,9 @@ class VirgilGUI(QMainWindow):
             return
         if "gain" in device.channels[key]:
             step = device.channels[key]["gain"]["precision"]
-            self.gainDial.setValue(device.channels[key]["gain"]["value"] * 10)
-            self.gainDial.setMinimum(device.channels[key]["gain"]["minValue"] * 10)
-            self.gainDial.setMaximum(device.channels[key]["gain"]["maxValue"] * 10)
+            self.gainDial.setValue(round(device.channels[key]["gain"]["value"] * 10))
+            self.gainDial.setMinimum(round(device.channels[key]["gain"]["minValue"] * 10))
+            self.gainDial.setMaximum(round(device.channels[key]["gain"]["maxValue"] * 10))
             padLevel = 0
             if "pad" in device.channels[key] and device.channels[key]["pad"]["value"]:
                 padLevel = device.channels[key]["padLevel"]["value"]

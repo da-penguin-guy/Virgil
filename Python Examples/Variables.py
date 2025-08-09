@@ -320,7 +320,7 @@ class DeviceInfo:
                 self.ongoingCommunication = False
                 self.sock = socket.socket()
                 self.sock.connect((self.deviceIp, virgilPort))
-            self.sock.settimeout(2.0)  # 2 second timeout
+            self.sock.settimeout(0.0)  # Non-blocking: returns immediately if no data
             #If there wasn't an exception by now, the device is a Virgil device and we're connected
             self.isVirgilDevice = True
             PrintGreen("Device Connected")
@@ -367,8 +367,7 @@ class DeviceInfo:
                 #Try to receive data from the socket
                 try:
                     data = self.sock.recv(4096)
-                #If we timeout, go back to the start to look for new queue messages
-                except TimeoutError:        
+                except (BlockingIOError, TimeoutError):
                     continue
                 except OSError as e:
                     if getattr(e, 'errno', None) == 10060:  # Windows timeout
@@ -451,7 +450,6 @@ class DeviceInfo:
             self.channels[(channelIndex,channelType)] = {}
 
         #If the message is an infoResponse, it should overwrite the existing entry
-        PrintYellow(self.channels[(channelIndex,channelType)])
         if messageType == "infoResponse":
             self.channels[(channelIndex,channelType)] = infoResponse
         else:
@@ -467,7 +465,6 @@ class DeviceInfo:
                 else:
                     # Overwrite or add new key
                     self.channels[(channelIndex, channelType)][key] = value
-        PrintYellow(self.channels[(channelIndex,channelType)])
         #If we've reached here, we have no errors
         return None
 
