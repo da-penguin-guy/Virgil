@@ -76,7 +76,7 @@ class DeviceConnection:
         self.selfIndex = selfIndex
         self.selfType = selfType
         AddSubscription(connectedDevice, selfIndex, selfType)
-        if not channelIndex:
+        if not channelType:
             LinkInfo = {"deviceName" : self.connectedDevice}
         else:
             LinkInfo = {
@@ -84,6 +84,7 @@ class DeviceConnection:
                 "channelIndex" : self.channelIndex,
                 "channelType" : self.channelType
             }
+        PrintYellow(f"Creating Connection: {LinkInfo}")
         key = (self.selfIndex, self.selfType)
         if LinkInfo not in channels[key]["linkedChannels"]:
             channels[key]["linkedChannels"].append(LinkInfo)
@@ -261,13 +262,6 @@ class DeviceInfo:
                     selfType=msg["channelType"]
                 ))
 
-                self.AddChannelLink(
-                    selfIndex=msg["channelIndex"],
-                    selfType=msg["channelType"],
-                    channelIndex=msg.get("sendingChannelIndex", None),
-                    channelType=msg.get("sendingChannelType", None)
-                )
-
                 if "sendingChannelType" in msg:
                     self.messageQueue.append(CreateInfoRequest(msg["sendingChannelIndex"], msg["sendingChannelType"]))
             elif msgType == "channelUnlink":
@@ -287,12 +281,6 @@ class DeviceInfo:
                         selfType=msg["channelType"],
                     )
 
-                self.RemoveChannelLink(
-                    selfIndex=msg["channelIndex"],
-                    selfType=msg["channelType"],
-                    channelIndex=msg.get("sendingChannelIndex", None),
-                    channelType=msg.get("sendingChannelType", None)
-                )
 
             elif msgType == "infoRequest":
                 #Error Handling
