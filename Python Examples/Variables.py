@@ -112,6 +112,17 @@ class DeviceConnection:
 
         UpdateGUIDevices()
 
+    def __eq__(self, other):
+        if not isinstance(other, DeviceConnection):
+            return NotImplemented
+        return (
+            self.connectedDevice == other.connectedDevice and
+            self.channelIndex == other.channelIndex and
+            self.channelType == other.channelType and
+            self.selfIndex == other.selfIndex and
+            self.selfType == other.selfType
+        )
+
     def CheckForRemove(self, connectedDevice: str, channelIndex: int | None, channelType: str | None, selfIndex: int, selfType: str):
         #If we match the given info, delete ourselves
         if(self.connectedDevice == connectedDevice and
@@ -169,13 +180,13 @@ class DeviceInfo:
     isVirgilDevice : bool | None = None
     ongoingCommunication : bool = False
     sock : socket.socket | None = None
-    messageQueue : list[dict] = []
+    messageQueue : list[list[dict]] = []
     disabled = False
     # Internal buffer for TCP stream reassembly (length-prefixed framing)
     recv_buffer: bytearray = bytearray()
 
 
-    def __init__(self, deviceName: str, ip: str, sock : socket.socket | None = None, startingMessage: bytes | None = None, queue: list[dict] | None = None):
+    def __init__(self, deviceName: str, ip: str, sock : socket.socket | None = None, startingMessage: bytes | None = None, queue: list[list[dict]] | None = None):
         #Just call Run in a separate Thread
         thread = threading.Thread(target=self.Run, args=(deviceName, ip, queue, sock, startingMessage), daemon=True)
         thread.start()
@@ -290,7 +301,7 @@ class DeviceInfo:
                 ))
 
                 if "sendingChannelType" in msg:
-                    self.messageQueue.append(CreateInfoRequest(msg["sendingChannelIndex"], msg["sendingChannelType"]))
+                    self.messageQueue.append([CreateInfoRequest(msg["sendingChannelIndex"], msg["sendingChannelType"])])
 
                 response = SendStatusUpdate(msg["channelIndex"], msg["channelType"], name, ["linkedChannels"])
                 if response:
@@ -373,7 +384,7 @@ class DeviceInfo:
 
         return returnMessages
 
-    def Run(self, deviceName: str, ip: str, queue: list[dict] | None, sock: socket.socket | None = None, startingMessage: bytes | None = None):
+    def Run(self, deviceName: str, ip: str, queue: list[list[dict]] | None, sock: socket.socket | None = None, startingMessage: bytes | None = None):
         self.sock = sock
         self.deviceName = deviceName
         self.deviceIp = ip
@@ -559,6 +570,24 @@ class DeviceInfo:
                 else:
                     # Overwrite or add new key
                     self.channels[(channelIndex, channelType)][key] = value
+
+        if "linkedChannels" in infoResponse:
+            for linkedChannel in infoResponse["linkedChannels"]:
+                if linkedChannel.get("deviceName") != selfName:
+                    continue
+                selfIndex = linkedChannel.get("channelIndex")
+                selfType = linkedChannel.get("channelType")
+                conn = DeviceConnection(
+                    connectedDevice=self.deviceName,
+                    selfIndex=selfIndex,
+                    selfType=selfType,
+                    channelIndex=channelIndex,
+                    channelType=channelType
+                )
+                if conn not in connections:
+                    connections.append(conn)
+                
+                
         #If we've reached here, we have no errors
         UpdateGUIValues()  # Update GUI when channel data changes
         return None
@@ -575,7 +604,7 @@ class DeviceInfo:
         self.disabled = True
         #Unsubscribe from all connections
         for conn in connections:
-            if conn.connectedDevice == self.deviceName and conn.channelType != "rx":
+            if conn.connectedDevice == self.deviceName:
                 conn.Remove()
         #Delete ourselves
         devices.pop(self.deviceName)
@@ -761,7 +790,7 @@ def SendStatusUpdate(channelIndex: int, channelType: str, exclude : str, params:
                 try:
                     device = devices[name]
                     if device.isVirgilDevice and device.sock:
-                        device.messageQueue.append(response)
+                        device.messageQueue.append([response])
                 except Exception as e:
                     PrintRed(f"Error sending message to device {name}: {e}")
     return response

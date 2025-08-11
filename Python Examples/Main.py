@@ -69,7 +69,6 @@ def CreateDevice(deviceName : str, deviceIp : str, sock : socket.socket | None =
     for connection in Variables.knownConnections:
         if connection.connectedDevice != deviceName:
             continue
-        Variables.connections.append(connection)
         if connection.channelIndex is not None and connection.channelType is not None:
             infoRequests.append(Variables.CreateInfoRequest(connection.channelIndex, connection.channelType))
             channelLink.append(Variables.CreateChannelLink(connection.selfIndex, connection.selfType, connection.channelIndex, connection.channelType))
@@ -77,7 +76,7 @@ def CreateDevice(deviceName : str, deviceIp : str, sock : socket.socket | None =
     #These messages are split up into 3 because you may want to do check a channel exists first
     #I don't do that, but it would be a good idea
     #It is also fine if you don't because you'll just get an error message
-    queue_messages = [Variables.CreateInfoRequest(-1)] + infoRequests + channelLink
+    queue_messages = [[Variables.CreateInfoRequest(-1)], infoRequests, channelLink]
     Variables.devices[deviceName] = Variables.DeviceInfo(
                 deviceName=deviceName,
                 ip=deviceIp,
@@ -267,7 +266,6 @@ class VirgilGUI(QMainWindow):
         # --- RIGHT SIDE: device dropdown in a group ---
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
-
 
         selector_group = QGroupBox("Channel Control")
         selector_layout = QVBoxLayout(selector_group)
@@ -555,10 +553,10 @@ class VirgilGUI(QMainWindow):
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
 
         if self.padButton.isEnabled() and device.channels[key]["pad"]["value"] != self.padButton.isChecked():
-            device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "pad", self.padButton.isChecked()))
+            device.messageQueue.append([Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "pad", self.padButton.isChecked())])
 
         if self.rfTxButton.isEnabled() and device.channels[key]["rfEnable"]["value"] != self.rfTxButton.isChecked():
-            device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "rfEnable", self.rfTxButton.isChecked()))
+            device.messageQueue.append([Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "rfEnable", self.rfTxButton.isChecked())])
 
         if self.gainDial.isEnabled():
             step = device.channels[key]["gain"]["precision"]
@@ -571,13 +569,13 @@ class VirgilGUI(QMainWindow):
             snapped_value = round(minValue + (steps_from_min * step), 3)
 
             if device.channels[key]["gain"]["value"] != snapped_value:
-                device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "gain", snapped_value))
+                device.messageQueue.append([Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "gain", snapped_value)])
 
 
         if self.powerSelection.isEnabled():
             selected_power = self.powerSelection.currentText()
             if device.channels[key]["transmitPower"]["value"] != selected_power:
-                device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "transmitPower", selected_power))
+                device.messageQueue.append([Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "transmitPower", selected_power)])
 
 
 # Create and run the GUI

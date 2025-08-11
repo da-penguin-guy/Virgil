@@ -14,7 +14,7 @@ At the start of every message should be a 4 byte unsigned big endian integer ind
 
 TCP sockets should open when the devices connect and only close once one of the devices goes offline
 
-**Watch out for race conditions when managing TCP socket connections.** If two devices attempt to connect simultaneously, ensure your code properly handles duplicate or conflicting connections.
+**Watch out for race conditions when managing TCP socket connections.** If two devices attempt to connect simultaneously, ensure your code properly handles conflicting connections.
 
 ## TCP Implementation Notes
 
@@ -74,6 +74,21 @@ mDNS is only used for Virgil Controller.
 - Handle `errorResponse` messages for error conditions
 - Maintain connection state and handle disconnections gracefully
 
+### Example with example devices
+Device1 has 2 rx and 2 tx, device2 has 2 rx and 2 tx
+
+1. Device1 sends infoRequest with index -1
+2. Device2 sends infoResponse with index -1
+3. Device1 sends infoRequest for tx 0 and tx 1
+4. Device2 sends infoResponse for tx 0 and tx 1
+5. Device1 sends channelLink for Device1 rx 0 -> Device2 tx 0 and Device1 rx 1 -> Device2 tx 1
+6. Device2 sends statusUpdate for tx 0 and tx 1 because `linkedChannels` was changed
+7. Device1 sends statusUpdate for rx 0 and rx 1 because `linkedChannels` was changed
+8. Device2 sends infoRequest with index -1
+9. Device1 sends infoResponse with index -1
+10. Device2 sends infoRequest for tx 0 and tx 1
+11. Device1 sends infoResponse for tx 0 and tx 1
+12. Device2 sends an endResponse 
 
 
 # Channel Types
