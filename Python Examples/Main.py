@@ -228,11 +228,6 @@ class VirgilGUI(QMainWindow):
         self.deviceListUpdateSignal.connect(self.UpdateDeviceList)
         self.valuesUpdateSignal.connect(self.ReceiveValues)
 
-        # Set up a timer for periodic GUI updates (optional safety measure)
-        self.updateTimer = QTimer()
-        self.updateTimer.timeout.connect(self.ReceiveValues)
-        self.updateTimer.start(100)  # Update every 100ms
-
         # Set up the main widget and horizontal layout
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
@@ -299,9 +294,8 @@ class VirgilGUI(QMainWindow):
         self.gainDial.setEnabled(False)
         gainLayout.addWidget(self.gainDial)
 
-        self.gainValueLabel = QLabel(str(self.gainDial.value()))
+        self.gainValueLabel = QLabel("NA")
         self.gainValueLabel.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        self.gainValueLabel.setText("NA")
         gainLayout.addWidget(self.gainValueLabel)
 
         self.padButton = QPushButton("Pad")
@@ -312,6 +306,24 @@ class VirgilGUI(QMainWindow):
 
         gainGroup.setLayout(gainLayout)
         grid_layout.addWidget(gainGroup, 0, 0)
+
+        # Create RF section
+        rfTxGroup = QGroupBox("RF Transmitting")
+        rfTxLayout = QVBoxLayout(rfTxGroup)
+
+        self.powerSelection : QComboBox = QComboBox()
+        self.powerSelection.setEnabled(False)
+        self.powerSelection.currentIndexChanged.connect(self.SendValues)
+        rfTxLayout.addWidget(self.powerSelection)
+
+        self.rfTxButton = QPushButton("RF Enable")
+        self.rfTxButton.setCheckable(True)
+        self.rfTxButton.setEnabled(False)
+        self.rfTxButton.clicked.connect(self.SendValues)
+        rfTxLayout.addWidget(self.rfTxButton)
+
+        rfTxGroup.setLayout(rfTxLayout)
+        grid_layout.addWidget(rfTxGroup, 0, 1)
 
         right_layout.addWidget(grid_widget)
 
@@ -362,8 +374,7 @@ class VirgilGUI(QMainWindow):
         device = Variables.devices[self.selectedConn.connectedDevice]
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
         if key not in device.channels:
-            Variables.PrintRed(f"Channel {key} not found in device {device.deviceName}. Refreshing...")
-            self.UpdateDeviceList()
+            Variables.PrintRed(f"Channel {key} not found in device {device.deviceName}.")
             return
         if "gain" in device.channels[key]:
             step = device.channels[key]["gain"]["precision"]
@@ -378,21 +389,44 @@ class VirgilGUI(QMainWindow):
                 self.gainValueLabel.setText(f"{self.gainDial.value() / 10 + padLevel:.0f}")  # No decimal places for whole numbers
             else:
                 self.gainValueLabel.setText(f"{self.gainDial.value() / 10 + padLevel:.1f}")  # One decimal place for fractional steps
-            if not device.channels[key]["gain"]["readOnly"]:
-                self.gainDial.setEnabled(True)
-            else:
+            if device.channels[key]["gain"]["readOnly"]:
                 self.gainDial.setEnabled(False)
+            else:
+                self.gainDial.setEnabled(True)
         else:
             self.gainDial.setEnabled(False)
 
         if "pad" in device.channels[key]:
             self.padButton.setChecked(device.channels[key]["pad"]["value"])
-            if not device.channels[key]["pad"]["readOnly"]:
-                self.padButton.setEnabled(True)
-            else:
+            if device.channels[key]["pad"]["readOnly"]:
                 self.padButton.setEnabled(False)
+            else:
+                self.padButton.setEnabled(True)
         else:
             self.padButton.setEnabled(False)
+        
+        if "rfEnable" in device.channels[key]:
+            self.rfTxButton.setChecked(device.channels[key]["rfEnable"]["value"])
+            if device.channels[key]["rfEnable"]["readOnly"]:
+                self.rfTxButton.setEnabled(False)
+            else:
+                self.rfTxButton.setEnabled(True)
+        else:
+            self.rfTxButton.setEnabled(False)
+        value = "transmitPower" in device.channels[key]
+
+        if "transmitPower" in device.channels[key]:
+            self.powerSelection.clear()
+            for index, powerLevel in enumerate(device.channels[key]["transmitPower"]["enumValues"]):
+                self.powerSelection.addItem(powerLevel)
+                if powerLevel == device.channels[key]["transmitPower"]["value"]:
+                    self.powerSelection.setCurrentIndex(index)
+            if device.channels[key]["transmitPower"]["readOnly"]:
+                self.powerSelection.setEnabled(False)
+            else:
+                self.powerSelection.setEnabled(True)
+        else:
+            self.powerSelection.setEnabled(False)
 
         
 
@@ -408,8 +442,12 @@ class VirgilGUI(QMainWindow):
             
         device = Variables.devices[self.selectedConn.connectedDevice]
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
+
         if self.padButton.isEnabled() and device.channels[key]["pad"]["value"] != self.padButton.isChecked():
             device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "pad", self.padButton.isChecked()))
+
+        if self.rfTxButton.isEnabled() and device.channels[key]["rfEnable"]["value"] != self.rfTxButton.isChecked():
+            device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "rfEnable", self.rfTxButton.isChecked()))
 
         if self.gainDial.isEnabled():
             step = device.channels[key]["gain"]["precision"]
@@ -423,6 +461,12 @@ class VirgilGUI(QMainWindow):
 
             if device.channels[key]["gain"]["value"] != snapped_value:
                 device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "gain", snapped_value))
+
+
+        if self.powerSelection.isEnabled():
+            selected_power = self.powerSelection.currentText()
+            if device.channels[key]["transmitPower"]["value"] != selected_power:
+                device.messageQueue.append(Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "transmitPower", selected_power))
 
 
 # Create and run the GUI

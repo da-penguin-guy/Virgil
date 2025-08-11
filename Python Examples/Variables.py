@@ -20,7 +20,7 @@ def SetGUIReference(reference):
     global gui
     gui = reference
 
-def UpdateGUI():
+def UpdateGUIDevices():
     """Thread-safe GUI update - can be called from any thread"""
     if gui:
         gui.deviceListUpdateSignal.emit()
@@ -94,7 +94,7 @@ class DeviceConnection:
         if LinkInfo not in channels[key]["linkedChannels"]:
             channels[key]["linkedChannels"].append(LinkInfo)
 
-        UpdateGUI()
+        UpdateGUIDevices()
 
     def CheckForRemove(self, connectedDevice: str, channelIndex: int, channelType: str, selfIndex: int, selfType: str):
         #If we match the given info, delete ourselves
@@ -122,7 +122,7 @@ class DeviceConnection:
         if LinkInfo in channels[key]["linkedChannels"]:
             channels[key]["linkedChannels"].remove(LinkInfo)
         connections.remove(self)
-        UpdateGUI()
+        UpdateGUIDevices()
 
         
 
@@ -406,7 +406,7 @@ class DeviceInfo:
         elif self.messageQueue:
             self.ongoingCommunication = True
             self.SendMessage(self.messageQueue.pop(0))
-        UpdateGUI()
+        UpdateGUIDevices()
         #Main loop
         while not self.disabled:
             try:
@@ -450,7 +450,7 @@ class DeviceInfo:
 
                     # Process the complete message
                     response = self.ProcessMessage(message_bytes, self.deviceIp)
-                    UpdateGUI()
+                    UpdateGUIValues()
                     if not response:
                         #If we don't have a response, try to pull from the message queue
                         if self.messageQueue:
@@ -552,7 +552,7 @@ class DeviceInfo:
                 conn.Remove()
         #Delete ourselves
         devices.pop(self.deviceName)
-        UpdateGUI()
+        UpdateGUIDevices()
 
 def GetIp() -> str:
     """
