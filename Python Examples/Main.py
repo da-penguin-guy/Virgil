@@ -308,7 +308,7 @@ class VirgilGUI(QMainWindow):
         gainGroup.setLayout(gainLayout)
         grid_layout.addWidget(gainGroup, 0, 0)
 
-        # Create RF section
+        # Create RF TX section
         rfTxGroup = QGroupBox("RF Transmitting")
         rfTxLayout = QVBoxLayout(rfTxGroup)
 
@@ -325,6 +325,25 @@ class VirgilGUI(QMainWindow):
 
         rfTxGroup.setLayout(rfTxLayout)
         grid_layout.addWidget(rfTxGroup, 0, 1)
+
+        # Create RF RX section
+        rfRxGroup = QGroupBox("RF Receiving")
+        rfRxLayout = QVBoxLayout(rfRxGroup)
+
+        self.deviceConnectedLabel = QLabel("Device Not Connected")
+        rfRxLayout.addWidget(self.deviceConnectedLabel)
+
+        self.subDeviceLabel = QLabel("Sub Device: NA")
+        rfRxLayout.addWidget(self.subDeviceLabel)
+
+        self.rfLevelLabel = QLabel("RF Level: NA")
+        rfRxLayout.addWidget(self.rfLevelLabel)
+
+        self.rfBatteryLabel = QLabel("Battery Level: NA")
+        rfRxLayout.addWidget(self.rfBatteryLabel)
+
+        rfRxGroup.setLayout(rfRxLayout)
+        grid_layout.addWidget(rfRxGroup, 0, 2)
 
         right_layout.addWidget(grid_widget)
 
@@ -355,10 +374,31 @@ class VirgilGUI(QMainWindow):
                 self.deviceSelector.setCurrentIndex(self.deviceSelector.count() - 1)
 
         if not self.selectedConn or (self.selectedConn.channelIndex, self.selectedConn.channelType) not in Variables.devices[self.selectedConn.connectedDevice].channels:
+            self.gainDial.blockSignals(True)
+            self.padButton.blockSignals(True)
+            self.rfTxButton.blockSignals(True)
+            self.powerSelection.blockSignals(True)
+
             self.gainDial.setEnabled(False)
-            self.padButton.setEnabled(False)
+            self.gainDial.setValue(0)
             self.gainValueLabel.setText("NA")
+            self.padButton.setChecked(False)
+            self.padButton.setEnabled(False)
+            self.rfTxButton.setChecked(False)
+            self.rfTxButton.setEnabled(False)
+            self.powerSelection.setEnabled(False)
+            self.powerSelection.clear()
+            self.deviceConnectedLabel.setText("Device Connected: NA")
+            self.subDeviceLabel.setText("Connected Device: NA")
+            self.rfLevelLabel.setText("RF Level: NA")
+            self.rfBatteryLabel.setText("Battery Level: NA")
+
+            self.gainDial.blockSignals(False)
+            self.padButton.blockSignals(False)
+            self.rfTxButton.blockSignals(False)
+            self.powerSelection.blockSignals(False)
             return
+        
 
     def ReceiveValues(self):
         """Internal slot method that actually updates the values - runs on GUI thread"""
@@ -413,6 +453,7 @@ class VirgilGUI(QMainWindow):
             else:
                 self.padButton.setEnabled(True)
         else:
+            self.padButton.setChecked(False)
             self.padButton.setEnabled(False)
         
         if "rfEnable" in device.channels[key]:
@@ -422,6 +463,7 @@ class VirgilGUI(QMainWindow):
             else:
                 self.rfTxButton.setEnabled(True)
         else:
+            self.rfTxButton.setChecked(False)
             self.rfTxButton.setEnabled(False)
 
         if "transmitPower" in device.channels[key]:
@@ -437,6 +479,26 @@ class VirgilGUI(QMainWindow):
         else:
             self.powerSelection.setEnabled(False)
             self.powerSelection.clear()
+
+        if "deviceConnected" in device.channels[key]:
+            self.deviceConnectedLabel.setText(f"Device Connected: {device.channels[key]['deviceConnected']['value']}")
+        else:
+            self.deviceConnectedLabel.setText("Device Connected: NA")
+        
+        if "subDevice" in device.channels[key]:
+            self.subDeviceLabel.setText(f"Connected Device: {device.channels[key]['subDevice']['value']}")
+        else:
+            self.subDeviceLabel.setText("Connected Device: NA")
+
+        if "rfLevel" in device.channels[key]:
+            self.rfLevelLabel.setText(f"RF Level: {device.channels[key]['rfLevel']['value']} {device.channels[key]['rfLevel']['unit']}")
+        else:
+            self.rfLevelLabel.setText("RF Level: NA")
+
+        if "batteryLevel" in device.channels[key]:
+            self.rfBatteryLabel.setText(f"Battery Level: {device.channels[key]['batteryLevel']['value']} {device.channels[key]['batteryLevel']['unit']}")
+        else:
+            self.rfBatteryLabel.setText("Battery Level: NA")
 
         # Unblock signals after programmatic updates
         self.gainDial.blockSignals(False)
