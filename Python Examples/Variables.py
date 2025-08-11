@@ -757,12 +757,13 @@ def SendStatusUpdate(channelIndex: int, channelType: str, exclude : str, params:
     # Send to all subscribed devices except the one specified
     for name in subscriptionList.get((channelIndex, channelType), []):
         if name != exclude:
-            try:
-                device = devices[name]
-                if device.isVirgilDevice and device.sock:
-                    device.messageQueue.append(response)
-            except Exception as e:
-                PrintRed(f"Error sending message to device {name}: {e}")
+            if name in devices:
+                try:
+                    device = devices[name]
+                    if device.isVirgilDevice and device.sock:
+                        device.messageQueue.append(response)
+                except Exception as e:
+                    PrintRed(f"Error sending message to device {name}: {e}")
     return response
 
 def LoadConfig(filepath: str):
