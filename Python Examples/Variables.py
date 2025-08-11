@@ -791,31 +791,9 @@ def LoadConfig(filepath: str):
 
 
 
-# ObservableDict to call UpdateGUIValues on change
-class ObservableDict(dict):
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        UpdateGUIValues()
-    def __delitem__(self, key):
-        super().__delitem__(key)
-        UpdateGUIValues()
-    def clear(self):
-        super().clear()
-        UpdateGUIValues()
-    def pop(self, key, default=None):
-        result = super().pop(key, default)
-        UpdateGUIValues()
-        return result
-    def popitem(self):
-        result = super().popitem()
-        UpdateGUIValues()
-        return result
-    def update(self, *args, **kwargs):
-        super().update(*args, **kwargs)
-        UpdateGUIValues()
 
-channels = ObservableDict()
 
+channels : dict[tuple[int,str], dict] = {}
 
 connections : list[DeviceConnection]= [
 ]

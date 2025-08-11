@@ -358,7 +358,7 @@ class VirgilGUI(QMainWindow):
 
     def UpdateContinuous(self):
         """Internal slot method that updates the UI continuously - runs on a timer"""
-        for key, channel in Variables.channels:
+        for key, channel in Variables.channels.items():
             foundParams = []
             for param in Variables.continuousParamsList:
                 if param in channel:
