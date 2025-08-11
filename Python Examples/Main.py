@@ -64,9 +64,10 @@ def CreateDevice(deviceName : str, deviceIp : str, sock : socket.socket = None, 
     channelLink : list[dict] = []
 
     #Loop over every connection for this device and add the needed messages
-    for connection in Variables.connections:
+    for connection in Variables.knownConnections:
         if connection.connectedDevice != deviceName:
             continue
+        Variables.connections.append(connection)
         infoRequests.append(Variables.CreateInfoRequest(connection.channelIndex, connection.channelType))
         channelLink.append(Variables.CreateChannelLink(connection.selfIndex, connection.selfType, connection.channelIndex, connection.channelType))
     #Create the device
@@ -376,6 +377,13 @@ class VirgilGUI(QMainWindow):
         if key not in device.channels:
             Variables.PrintRed(f"Channel {key} not found in device {device.deviceName}.")
             return
+
+        # Block signals for all widgets that are updated programmatically
+        self.gainDial.blockSignals(True)
+        self.padButton.blockSignals(True)
+        self.rfTxButton.blockSignals(True)
+        self.powerSelection.blockSignals(True)
+
         if "gain" in device.channels[key]:
             step = device.channels[key]["gain"]["precision"]
             self.gainDial.setValue(round(device.channels[key]["gain"]["value"] * 10))
@@ -395,6 +403,8 @@ class VirgilGUI(QMainWindow):
                 self.gainDial.setEnabled(True)
         else:
             self.gainDial.setEnabled(False)
+            self.gainDial.setValue(0)
+            self.gainValueLabel.setText("NA")
 
         if "pad" in device.channels[key]:
             self.padButton.setChecked(device.channels[key]["pad"]["value"])
@@ -413,7 +423,6 @@ class VirgilGUI(QMainWindow):
                 self.rfTxButton.setEnabled(True)
         else:
             self.rfTxButton.setEnabled(False)
-        value = "transmitPower" in device.channels[key]
 
         if "transmitPower" in device.channels[key]:
             self.powerSelection.clear()
@@ -427,6 +436,13 @@ class VirgilGUI(QMainWindow):
                 self.powerSelection.setEnabled(True)
         else:
             self.powerSelection.setEnabled(False)
+            self.powerSelection.clear()
+
+        # Unblock signals after programmatic updates
+        self.gainDial.blockSignals(False)
+        self.padButton.blockSignals(False)
+        self.rfTxButton.blockSignals(False)
+        self.powerSelection.blockSignals(False)
 
         
 

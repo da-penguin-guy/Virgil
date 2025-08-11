@@ -753,7 +753,7 @@ def LoadConfig(filepath: str):
         channelType = channel["channelType"]
         channels[(channelIndex, channelType)] = channel
     for conn in config.get("Connections", []):
-        connections.append(DeviceConnection(
+        knownConnections.append(DeviceConnection(
             connectedDevice = conn["name"],
             selfIndex = conn["selfIndex"],
             selfType = conn["selfType"],
@@ -768,6 +768,9 @@ channels : dict[tuple[int,str],dict] = {
 
 
 connections : list[DeviceConnection]= [
+]
+
+knownConnections : list[DeviceConnection] = [
 ]
 
 devices : dict[str, DeviceInfo] = {
