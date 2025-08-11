@@ -1,2 +1,0 @@
-
-        device = Variables.devices[self.

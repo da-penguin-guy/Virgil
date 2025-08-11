@@ -97,19 +97,19 @@ class DeviceConnection:
         self.channelType = channelType
         self.selfIndex = selfIndex
         self.selfType = selfType
-        AddSubscription(connectedDevice, selfIndex, selfType)
-        if not channelType:
-            LinkInfo = {"deviceName" : self.connectedDevice}
-        else:
-            LinkInfo = {
-                "deviceName" : self.connectedDevice,
-                "channelIndex" : self.channelIndex,
-                "channelType" : self.channelType
-            }
-        key = (self.selfIndex, self.selfType)
-        if LinkInfo not in channels[key]["linkedChannels"]:
-            channels[key]["linkedChannels"].append(LinkInfo)
-
+        if self.connectedDevice in devices:
+            AddSubscription(connectedDevice, selfIndex, selfType)
+            if not channelType:
+                LinkInfo = {"deviceName" : self.connectedDevice}
+            else:
+                LinkInfo = {
+                    "deviceName" : self.connectedDevice,
+                    "channelIndex" : self.channelIndex,
+                    "channelType" : self.channelType
+                }
+            key = (self.selfIndex, self.selfType)
+            if LinkInfo not in channels[key]["linkedChannels"]:
+                channels[key]["linkedChannels"].append(LinkInfo)
         UpdateGUIDevices()
 
     def __eq__(self, other):
@@ -131,6 +131,9 @@ class DeviceConnection:
                 self.selfIndex == selfIndex and
                 self.selfType == selfType):
             self.Remove()
+
+    def __str__(self):
+        return f"DeviceConnection({self.connectedDevice}, {self.selfIndex}, {self.selfType}, {self.channelIndex}, {self.channelType})"
 
     def Remove(self):
         """
@@ -577,6 +580,8 @@ class DeviceInfo:
                     continue
                 selfIndex = linkedChannel.get("channelIndex")
                 selfType = linkedChannel.get("channelType")
+                if selfIndex is None or not selfType:
+                    continue
                 conn = DeviceConnection(
                     connectedDevice=self.deviceName,
                     selfIndex=selfIndex,
@@ -586,6 +591,7 @@ class DeviceInfo:
                 )
                 if conn not in connections:
                     connections.append(conn)
+                SendStatusUpdate(channelIndex,channelType)
                 
                 
         #If we've reached here, we have no errors
@@ -777,7 +783,7 @@ def ProcessParamChange(channelIndex: int, channelType: str, paramName: str, valu
     UpdateGUIValues()  # Update GUI when parameter values change
     return None
 
-def SendStatusUpdate(channelIndex: int, channelType: str, exclude : str, params: list[str]) -> dict:
+def SendStatusUpdate(channelIndex: int, channelType: str, exclude : str = "", params: list[str] = []) -> dict:
     """
     Send a status update message.
     """
