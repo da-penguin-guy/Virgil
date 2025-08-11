@@ -35,47 +35,63 @@ def PrintBlue(text: str):
     Print text in blue color with line number.
     """
     import datetime
-    frame = inspect.currentframe().f_back
-    filename = frame.f_code.co_filename.split('\\')[-1]  # Just filename, not full path
-    line_number = frame.f_lineno
-    now = datetime.datetime.now().strftime('%I:%M:%S.%f')[:-3]  # 12Hr:min:sec.mil
-    print(f"[{now} {filename}:{line_number}] \033[34m{text}\033[0m", flush=True)
+    frame = inspect.currentframe()
+    if frame and frame.f_back:
+        frame = frame.f_back
+        filename = frame.f_code.co_filename.split('\\')[-1]  # Just filename, not full path
+        line_number = frame.f_lineno
+        now = datetime.datetime.now().strftime('%I:%M:%S.%f')[:-3]  # 12Hr:min:sec.mil
+        print(f"[{now} {filename}:{line_number}] \033[34m{text}\033[0m", flush=True)
+    else:
+        print(f"\033[34m{text}\033[0m", flush=True)
 
 def PrintGreen(text: str):
     """
     Print text in green color with line number.
     """
     import datetime
-    frame = inspect.currentframe().f_back
-    filename = frame.f_code.co_filename.split('\\')[-1]  # Just filename, not full path
-    line_number = frame.f_lineno
-    now = datetime.datetime.now().strftime('%I:%M:%S.%f')[:-3]  # 12Hr:min:sec.mil
-    print(f"[{now} {filename}:{line_number}]\033[32m {text}\033[0m", flush=True)
+    frame = inspect.currentframe()
+    if frame and frame.f_back:
+        frame = frame.f_back
+        filename = frame.f_code.co_filename.split('\\')[-1]  # Just filename, not full path
+        line_number = frame.f_lineno
+        now = datetime.datetime.now().strftime('%I:%M:%S.%f')[:-3]  # 12Hr:min:sec.mil
+        print(f"[{now} {filename}:{line_number}]\033[32m {text}\033[0m", flush=True)
+    else:
+        print(f"\033[32m {text}\033[0m", flush=True)
 
 def PrintRed(text: str):
     """
     Print text in red color with line number.
     """
     import datetime
-    frame = inspect.currentframe().f_back
-    filename = frame.f_code.co_filename.split('\\')[-1]  # Just filename, not full path
-    line_number = frame.f_lineno
-    now = datetime.datetime.now().strftime('%I:%M:%S.%f')[:-3]  # 12Hr:min:sec.mil
-    print(f"[{now} {filename}:{line_number}] \033[31m{text}\033[0m", flush=True)
+    frame = inspect.currentframe()
+    if frame and frame.f_back:
+        frame = frame.f_back
+        filename = frame.f_code.co_filename.split('\\')[-1]  # Just filename, not full path
+        line_number = frame.f_lineno
+        now = datetime.datetime.now().strftime('%I:%M:%S.%f')[:-3]  # 12Hr:min:sec.mil
+        print(f"[{now} {filename}:{line_number}] \033[31m{text}\033[0m", flush=True)
+    else:
+        print(f"\033[31m{text}\033[0m", flush=True)
 
 def PrintYellow(text: str):
     """
     Print text in yellow color with line number.
     """
     import datetime
-    frame = inspect.currentframe().f_back
-    filename = frame.f_code.co_filename.split('\\')[-1]  # Just filename, not full path
-    line_number = frame.f_lineno
-    now = datetime.datetime.now().strftime('%I:%M:%S.%f')[:-3]  # 12Hr:min:sec.mil
-    print(f"[{now} {filename}:{line_number}] \033[33m{text}\033[0m", flush=True)
+    frame = inspect.currentframe()
+    if frame and frame.f_back:
+        frame = frame.f_back
+        filename = frame.f_code.co_filename.split('\\')[-1]  # Just filename, not full path
+        line_number = frame.f_lineno
+        now = datetime.datetime.now().strftime('%I:%M:%S.%f')[:-3]  # 12Hr:min:sec.mil
+        print(f"[{now} {filename}:{line_number}] \033[33m{text}\033[0m", flush=True)
+    else:
+        print(f"\033[33m{text}\033[0m", flush=True)
 
 class DeviceConnection:
-    def __init__(self, connectedDevice: str, selfIndex: int, selfType: str, channelIndex: int = None, channelType: str = None):
+    def __init__(self, connectedDevice: str, selfIndex: int, selfType: str, channelIndex: int | None = None, channelType: str | None = None):
         self.connectedDevice = connectedDevice
         self.channelIndex = channelIndex
         self.channelType = channelType
@@ -96,7 +112,7 @@ class DeviceConnection:
 
         UpdateGUIDevices()
 
-    def CheckForRemove(self, connectedDevice: str, channelIndex: int, channelType: str, selfIndex: int, selfType: str):
+    def CheckForRemove(self, connectedDevice: str, channelIndex: int | None, channelType: str | None, selfIndex: int, selfType: str):
         #If we match the given info, delete ourselves
         if(self.connectedDevice == connectedDevice and
                 self.channelIndex == channelIndex and
@@ -126,14 +142,18 @@ class DeviceConnection:
 
         
 
-def AddSubscription(connectedDevice: str, selfIndex: int = None, selfType: str = None):
+def AddSubscription(connectedDevice: str, selfIndex: int | None = None, selfType: str | None = None):
+    if selfIndex is None or selfType is None:
+        return
     key = (selfIndex, selfType)
     if key not in subscriptionList:
         subscriptionList[key] = []
     if connectedDevice not in subscriptionList[key]:
         subscriptionList[key].append(connectedDevice)
 
-def RemoveSubscription(connectedDevice: str, selfIndex: int = None, selfType: str = None):
+def RemoveSubscription(connectedDevice: str, selfIndex: int | None = None, selfType: str | None = None):
+    if selfIndex is None or selfType is None:
+        return
     key = (selfIndex, selfType)
     if key in subscriptionList and connectedDevice in subscriptionList[key]:
         subscriptionList[key].remove(connectedDevice)
@@ -146,24 +166,26 @@ class DeviceInfo:
     virgilVersion = ""
     channelCounts : dict[str, int] = {}
     channels : dict[tuple[int,str], dict] = {}
-    isVirgilDevice : bool = None
+    isVirgilDevice : bool | None = None
     ongoingCommunication : bool = False
-    sock : socket.socket = None
-    messageQueue : list[list[dict]] = []
+    sock : socket.socket | None = None
+    messageQueue : list[dict] = []
     disabled = False
     # Internal buffer for TCP stream reassembly (length-prefixed framing)
     recv_buffer: bytearray = bytearray()
 
 
-    def __init__(self, deviceName: str, ip: str, sock : socket.socket = None, startingMessage: bytes = None, queue: list[list[dict]] = []):
+    def __init__(self, deviceName: str, ip: str, sock : socket.socket | None = None, startingMessage: bytes | None = None, queue: list[dict] | None = None):
         #Just call Run in a separate Thread
         thread = threading.Thread(target=self.Run, args=(deviceName, ip, queue, sock, startingMessage), daemon=True)
         thread.start()
 
-    def SendMessage(self, messages : dict):
+    def SendMessage(self, messages : dict | list[dict]):
         """
         Send a JSON object to the specified IP using TCP.
         """
+        if self.sock is None:
+            return
         # Send via TCP with a 4-byte big-endian length prefix
         jsonInfo = json.dumps(CreateBase(messages))
         payload = jsonInfo.encode('utf-8')
@@ -351,11 +373,11 @@ class DeviceInfo:
 
         return returnMessages
 
-    def Run(self, deviceName: str, ip: str, queue: list[list[dict]], sock: socket.socket = None, startingMessage: bytes = None):
+    def Run(self, deviceName: str, ip: str, queue: list[dict] | None, sock: socket.socket | None = None, startingMessage: bytes | None = None):
         self.sock = sock
         self.deviceName = deviceName
         self.deviceIp = ip
-        self.messageQueue = queue
+        self.messageQueue = queue if queue is not None else []
     # Reset stream buffer for this connection
         self.recv_buffer = bytearray()
         PrintGreen(f"Device {self.deviceName} started with IP {self.deviceIp}.")
@@ -473,7 +495,7 @@ class DeviceInfo:
                 PrintRed(f"Error in device {self.deviceName} communication: {e} \n{traceback.format_exc()}")
                 continue
 
-    def Update(self, ip: str, infoResponse: dict) -> list[dict]:
+    def Update(self, ip: str, infoResponse: dict) -> list[dict] | None:
         # Always trust the latest IP address
         self.deviceIp = ip
         errors : list[dict] = []
@@ -506,6 +528,11 @@ class DeviceInfo:
             self.virgilVersion = infoResponse["virgilVersion"]
             self.channelCounts = infoResponse["channelCounts"]
             return
+        
+        # Ensure channelType is not None for channel-specific operations
+        if channelType is None:
+            errors.append(CreateError("MalformedMessage", "Channel type cannot be None for channel-specific operations."))
+            return errors
         
         #Remove for processing
         infoResponse.pop("channelIndex")
@@ -644,7 +671,7 @@ def CreateInfoResponse(channelIndex : int, channelType : str = "") -> dict:
     response.update(channels[key])
     return response
 
-def CreateStatusUpdate(channelIndex: int, channelType: str = "", params : list[str] = None) -> dict:
+def CreateStatusUpdate(channelIndex: int, channelType: str = "", params : list[str] | None = None) -> dict:
     """
     Create a status update message.
     """
@@ -671,7 +698,7 @@ def CreateEndResponse() -> dict:
         "messageType": "endResponse",
     }
 
-def CreateCommand(channelIndex: int, channelType: str, param: str, value: any) -> dict:
+def CreateCommand(channelIndex: int, channelType: str, param: str, value) -> dict:
     """
     Create a parameterCommand.
     """
@@ -682,7 +709,7 @@ def CreateCommand(channelIndex: int, channelType: str, param: str, value: any) -
         param: value
     }
 
-def ProcessParamChange(channelIndex: int, channelType: str, paramName: str, value: any) -> dict:
+def ProcessParamChange(channelIndex: int, channelType: str, paramName: str, value) -> dict | None:
     """
     Process a parameter change message.
     """
@@ -763,8 +790,31 @@ def LoadConfig(filepath: str):
 
 
 
-channels : dict[tuple[int,str],dict] = {
-}
+
+# ObservableDict to call UpdateGUIValues on change
+class ObservableDict(dict):
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        UpdateGUIValues()
+    def __delitem__(self, key):
+        super().__delitem__(key)
+        UpdateGUIValues()
+    def clear(self):
+        super().clear()
+        UpdateGUIValues()
+    def pop(self, key, default=None):
+        result = super().pop(key, default)
+        UpdateGUIValues()
+        return result
+    def popitem(self):
+        result = super().popitem()
+        UpdateGUIValues()
+        return result
+    def update(self, *args, **kwargs):
+        super().update(*args, **kwargs)
+        UpdateGUIValues()
+
+channels = ObservableDict()
 
 
 connections : list[DeviceConnection]= [
@@ -776,5 +826,7 @@ knownConnections : list[DeviceConnection] = [
 devices : dict[str, DeviceInfo] = {
 }
 
-subscriptionList : dict[(int,str), list[str]] = {
+subscriptionList : dict[tuple[int,str], list[str]] = {
 }
+
+continuousParamsList = ["audioLevel", "rfLevel", "batteryLevel"]

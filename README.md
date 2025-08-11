@@ -16,6 +16,13 @@ TCP sockets should open when the devices connect and only close once one of the 
 
 **Watch out for race conditions when managing TCP socket connections.** If two devices attempt to connect simultaneously, ensure your code properly handles duplicate or conflicting connections.
 
+## TCP Implementation Notes
+
+- Use non-blocking sockets with proper buffering for message reassembly
+- Implement proper length-prefixed message framing to handle partial receives
+- Handle connection timeouts and disconnections gracefully
+- Process complete JSON messages only after receiving the full payload
+
 
 # mDNS Overview
 
@@ -43,9 +50,29 @@ mDNS is only used for Virgil Controller.
 | infoRequest		      | Used to request information on a device/channel          | TCP	   |
 | infoResponse 		    | Used to respond to an infoRequest					               | TCP     |
 | errorResponse       | Used to convey an error				                           | TCP     |
-| subscribeRequest    | Used to tell a device to inform the sender of any parameter changes for a given channel         | TCP     |
-| unsubscribeRequest  | Used to undo a subscribeRequest                          | TCP     |
+| subscribeMessage    | Used to tell a device to inform the sender of any parameter changes for a given channel         | TCP     |
+| unsubscribeMessage  | Used to undo a subscribeMessage                          | TCP     |
 | endResponse         | Used to say that the sender has no response              | TCP     |
+
+## Message Flow Patterns
+
+### Connection Establishment
+1. Device connects via TCP to another device's Virgil port
+2. First message should include `transmittingDevice` to identify sender
+3. Devices may exchange `infoRequest`/`infoResponse` messages for discovery
+4. Channel linking occurs via `channelLink` messages
+
+### Parameter Control Flow
+1. Send `parameterCommand` to change a parameter value
+2. Receiving device validates the command and updates the parameter
+3. Device sends `statusUpdate` to all subscribed devices (except sender)
+4. Use `subscribeMessage`/`unsubscribeMessage` to manage subscriptions
+
+### Communication Session Management
+- Messages are exchanged in request-response patterns
+- Use `endResponse` to indicate end of communication session
+- Handle `errorResponse` messages for error conditions
+- Maintain connection state and handle disconnections gracefully
 
 
 
@@ -127,9 +154,9 @@ Each parameter is a JSON object with the following fields:
 - **Percentage**: Use `%` as unit with `minValue: 0`, `maxValue: 100`, `dataType: "number"`, and `precision : 1`
 - **Precision**: Values increment from `minValue` by `precision` steps (e.g., precision 3dB, minValue -5dB = -5, -2, 1, 4...)
 
-The formula to see if a value is valid is:
+The formula to check if a value is valid is:
 ```python
-  isValid = (value - minValue) % precision and value > minValue and value < maxValue
+isValid = (value - minValue) % precision == 0 and value >= minValue and value <= maxValue
 ```
 
 
@@ -393,8 +420,7 @@ Example:
 ``` 
 
 ### Continuous Parameters (Real-Time Monitoring)
-
-These parameters change frequently and require status updates every 500ms:
+These parameters change frequently and require status updates every 500ms  
 
 #### audioLevel
 Audio signal level
@@ -465,11 +491,18 @@ Example:
   "transmittingDevice": "ClientDanteDeviceName",
   "messages": [
     {
-      "messageType": "StatusUpdate",
+      "messageType": "statusUpdate",
       "channelIndex": 0,
-      "audioLevel": -12,
-      "rfLevel": 85 ,
-      "batteryLevel": 67
+      "channelType": "tx",
+      "audioLevel": {
+        "value": -12
+      },
+      "rfLevel": {
+        "value": 85
+      },
+      "batteryLevel": {
+        "value": 67
+      }
     }
   ]
 }
@@ -488,7 +521,7 @@ Valid values for the `deviceType` parameter:
 - `computer`
 
 ### Device-Level Parameters
-These parameters are only present in device information responses:
+These parameters are only present in device information responses (channelIndex = -1):
 
 - **model**: Device model name 
 - **deviceType**: Device category (string)
@@ -500,13 +533,15 @@ These parameters are only present in device information responses:
 # Message Details
 
 ### Status Update
-A status update can be triggered by 3 events.
-1. A parameter was changed
-2. You have continuous parameters and it has been 500 ms since the last update
-3. A statusRequest was received
+A status update can be triggered by 3 events:
+1. A parameter was changed via `parameterCommand`
+2. Continuous parameters haven't been broadcasted in 500ms
+3. A `statusRequest` was received
 
 In cases 1 and 2, the status update should be sent to all devices subscribed to that channel.
-In case 3, the status update should be sent to the ip address that requested it
+In case 3, the status update should be sent only to the device that requested it.
+
+**Note**: Status updates only include the values that have changed, not the full parameter structure.
 
 #### Error Types
 - `UnrecognizedCommand`: Unknown message type

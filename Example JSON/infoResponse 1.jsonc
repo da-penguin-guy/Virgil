@@ -6,7 +6,7 @@
             "messageType" : "infoResponse", // Indicates this is a info response
             "channelIndex" : 1, // The index of the channel being requested
             "channelType" : "tx", // Type of channel (tx, rx, or aux)
-            "connectedChannels": [
+            "linkedChannels": [
                 {
                     "deviceName": "ConnectedDevice1",
                     "channelIndex": 0,

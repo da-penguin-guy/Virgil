@@ -83,5 +83,6 @@
     "python-envs.pythonProjects": [],
     "cSpell.words": [
         "rlist"
-    ]
+    ],
+    "python.analysis.typeCheckingMode": "basic"
 }

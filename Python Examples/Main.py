@@ -1,8 +1,10 @@
+from random import random
 import traceback
 import Variables
 import os
+import random
 os.system('cls' if os.name == 'nt' else 'clear')
-from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser
+from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser, ServiceListener
 import socket
 import json
 import threading
@@ -24,7 +26,7 @@ selfIp = Variables.GetIp()
 
 found_devices = []
 
-class MDNSListener:
+class MDNSListener(ServiceListener):
     def remove_service(self, zeroconf, type, name):
         # Remove device from found_devices if present
         base_name = name.split('.')[0] 
@@ -59,7 +61,7 @@ class MDNSListener:
             CreateDevice(base_name, socket.inet_ntoa(info.addresses[0]))
 
 
-def CreateDevice(deviceName : str, deviceIp : str, sock : socket.socket = None, startingMessage: bytes = None):
+def CreateDevice(deviceName : str, deviceIp : str, sock : socket.socket | None = None, startingMessage: bytes | None = None):
     infoRequests : list[dict] = []
     channelLink : list[dict] = []
 
@@ -68,22 +70,20 @@ def CreateDevice(deviceName : str, deviceIp : str, sock : socket.socket = None, 
         if connection.connectedDevice != deviceName:
             continue
         Variables.connections.append(connection)
-        infoRequests.append(Variables.CreateInfoRequest(connection.channelIndex, connection.channelType))
-        channelLink.append(Variables.CreateChannelLink(connection.selfIndex, connection.selfType, connection.channelIndex, connection.channelType))
+        if connection.channelIndex is not None and connection.channelType is not None:
+            infoRequests.append(Variables.CreateInfoRequest(connection.channelIndex, connection.channelType))
+            channelLink.append(Variables.CreateChannelLink(connection.selfIndex, connection.selfType, connection.channelIndex, connection.channelType))
     #Create the device
     #These messages are split up into 3 because you may want to do check a channel exists first
     #I don't do that, but it would be a good idea
     #It is also fine if you don't because you'll just get an error message
+    queue_messages = [Variables.CreateInfoRequest(-1)] + infoRequests + channelLink
     Variables.devices[deviceName] = Variables.DeviceInfo(
                 deviceName=deviceName,
                 ip=deviceIp,
                 sock=sock,
                 startingMessage=startingMessage,
-                queue=[
-                    Variables.CreateInfoRequest(-1),
-                    infoRequests,
-                    channelLink
-                ]
+                queue=queue_messages
             )
 
 def NetListener():
@@ -218,10 +218,9 @@ class VirgilGUI(QMainWindow):
     deviceListUpdateSignal = pyqtSignal()
     valuesUpdateSignal = pyqtSignal()
     
-    selectedConn: Variables.DeviceConnection = None
-
     def __init__(self):
         super().__init__()
+        self.selectedConn = None  # type: ignore
         self.setWindowTitle("Virgil Protocol Monitor")
         self.setGeometry(100, 100, 700, 400)
 
@@ -348,8 +347,31 @@ class VirgilGUI(QMainWindow):
         right_layout.addWidget(grid_widget)
 
         h_layout.addWidget(right_widget, stretch=2)
+
+        # QTimer to call UpdateContinuous every 500ms
+        self.continuous_timer = QTimer(self)
+        self.continuous_timer.timeout.connect(self.UpdateContinuous)
+        self.continuous_timer.start(500)
+
+
         self.ReceiveValues()
-    
+
+    def UpdateContinuous(self):
+        """Internal slot method that updates the UI continuously - runs on a timer"""
+        for key, channel in Variables.channels:
+            foundParams = []
+            for param in Variables.continuousParamsList:
+                if param in channel:
+                    foundParams.append(param)
+            if not foundParams:
+                continue
+
+            #Because these values arn't tied to any actual values, i'm just making up a random number
+            for param in foundParams:
+                channel[param]["value"] = random.randint(0, 100)
+
+            Variables.SendStatusUpdate(key[0], key[1], "", foundParams)
+
     def UpdateDeviceList(self):
         """Internal slot method that actually updates the device list - runs on GUI thread"""
         # Save current selection for the connection selector
@@ -357,6 +379,8 @@ class VirgilGUI(QMainWindow):
         for device_name, device_info in Variables.devices.items():
             status = "Connected" if device_info.isVirgilDevice else "Disconnected"
             self.device_list.addItem(f"{device_name} - {status}")
+
+
 
         # Save current label before clearing
         self.selectedConn : Variables.DeviceConnection = self.deviceSelector.currentData()
@@ -413,6 +437,11 @@ class VirgilGUI(QMainWindow):
             return
             
         device = Variables.devices[self.selectedConn.connectedDevice]
+        
+        # Ensure we have valid channel index and type
+        if self.selectedConn.channelIndex is None or self.selectedConn.channelType is None:
+            return
+            
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
         if key not in device.channels:
             Variables.PrintRed(f"Channel {key} not found in device {device.deviceName}.")
@@ -518,6 +547,10 @@ class VirgilGUI(QMainWindow):
             not Variables.devices[self.selectedConn.connectedDevice].isVirgilDevice):
             return
             
+        # Ensure we have valid channel index and type
+        if self.selectedConn.channelIndex is None or self.selectedConn.channelType is None:
+            return
+            
         device = Variables.devices[self.selectedConn.connectedDevice]
         key = (self.selectedConn.channelIndex, self.selectedConn.channelType)
 
@@ -558,6 +591,7 @@ gui.show()
 Variables.SetGUIReference(gui)
 
 try:
-    app.exec()
+    if app:
+        app.exec()
 except KeyboardInterrupt:
     Variables.PrintRed("Shutting down...")

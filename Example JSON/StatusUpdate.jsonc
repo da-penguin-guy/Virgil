@@ -8,7 +8,7 @@
             "channelType" : "tx", // Type of channel (tx, rx, or aux)
 
             
-            "connectedChannels": [
+            "linkedChannels": [
                 {
                     "deviceName": "ConnectedDevice1",
                     "channelIndex": 0,
