@@ -91,7 +91,7 @@ def PrintYellow(text: str):
         print(f"\033[33m{text}\033[0m", flush=True)
 
 class DeviceConnection:
-    def __init__(self, connectedDevice: str, selfIndex: int, selfType: str, channelIndex: int | None = None, channelType: str | None = None):
+    def __init__(self, connectedDevice: str, selfIndex: int, selfType: str, channelIndex: int | None = None, channelType: str | None = None, sendUpdate = False):
         self.connectedDevice = connectedDevice
         self.channelIndex = channelIndex
         self.channelType = channelType
@@ -110,6 +110,8 @@ class DeviceConnection:
             key = (self.selfIndex, self.selfType)
             if LinkInfo not in channels[key]["linkedChannels"]:
                 channels[key]["linkedChannels"].append(LinkInfo)
+                if sendUpdate:
+                    SendStatusUpdate(self.selfIndex, self.selfType)
         UpdateGUIDevices()
 
     def __eq__(self, other):
@@ -587,11 +589,12 @@ class DeviceInfo:
                     selfIndex=selfIndex,
                     selfType=selfType,
                     channelIndex=channelIndex,
-                    channelType=channelType
+                    channelType=channelType,
+                    sendUpdate=True
                 )
                 if conn not in connections:
                     connections.append(conn)
-                SendStatusUpdate(channelIndex,channelType)
+                
                 
                 
         #If we've reached here, we have no errors
