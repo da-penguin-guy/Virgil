@@ -56,7 +56,14 @@ class MDNSListener(ServiceListener):
             if base_name in Variables.devices:
                 Variables.PrintBlue(f"Device already exists: {base_name}")
                 return
-            
+            deviceFound = False
+            for conn in Variables.knownConnections:
+                if conn.connectedDevice == base_name:
+                    deviceFound = True
+                    break
+            if not deviceFound:
+                Variables.PrintBlue(f"Device not found in known connections: {base_name}")
+                return
             # Create the device with the found IP address
             CreateDevice(base_name, socket.inet_ntoa(info.addresses[0]))
 
@@ -576,7 +583,6 @@ class VirgilGUI(QMainWindow):
             selected_power = self.powerSelection.currentText()
             if device.channels[key]["transmitPower"]["value"] != selected_power:
                 device.messageQueue.append([Variables.CreateCommand(self.selectedConn.channelIndex, self.selectedConn.channelType, "transmitPower", selected_power)])
-
 
 # Create and run the GUI
 if not QApplication.instance():
