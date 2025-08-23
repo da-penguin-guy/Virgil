@@ -572,6 +572,8 @@ class DeviceInfo:
                 ):
                     # Update only the keys in the nested dict, e.g., update 'value' in 'gain'
                     self.channels[(channelIndex, channelType)][key].update(value)
+                elif key not in self.channels[(channelIndex, channelType)]:
+                    continue  # Skip keys that are not in the channel dict to avoid partially initializing
                 else:
                     # Overwrite or add new key
                     self.channels[(channelIndex, channelType)][key] = value

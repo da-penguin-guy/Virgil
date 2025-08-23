@@ -2,6 +2,8 @@
 
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over TCP. It uses mDNS for Virgil Controller and supports real-time parameter control and status monitoring.
 
+While the Virgil Documentation is in progress, virgil version 2.0.0 is finished and will not have any protocol-level changes made. If there are discrepancies in documentation or clarification needed, please create an issue.
+
 **This is Virgil Protocol 2.0.0**
 
 In previous versions of the virgil protocol, devices were categorized in Master/Slave/Server/Client. That no longer exists
@@ -113,7 +115,14 @@ Rx channels can only be linked to Tx channels and vice versa.
 
 Either side can initiate the link by sending a channelLink.  
 
-Aux channels can only be linked to another device. Only the device can initiate the link.
+Aux channels are not linked to another channel. They are instead linked to a device. The linking must be initiated by the device not containing the aux channel.
+
+## Connecting to aux channels
+Because Aux channels do not exist in dante, we cannot rely on dante's subscriptions to find where channels are.  
+There are several different ways to find aux channel devices
+1. Prompt the user for an IP address. A device should always support this in the case a network doesn't allow mDNS
+2. Use mDNS to search for virgil devices and allow the user to connect to aux channels
+3. Remember previous connections made with methods 1 and 2
 
 # Parameters
 
