@@ -3,6 +3,7 @@
     "messages" :
     [
         {
+            "messageID" : 143052847011, // Unique ID for this message
             "messageType" : "infoRequest", // Indicates this is a info request
             "channelIndex" : -1, // Requesting device info, no specific channel index
         }

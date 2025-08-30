@@ -3,6 +3,8 @@
     "messages" :
     [
         {
+            "messageID" : 143052847007, // Unique ID for this message
+            "responseID" : 143052301001, // Unique ID for this message
             "messageType" : "ErrorResponse",           // Indicates this is an error response
             "errorValue" : "ValueOutOfRange",         // Error type (see Overview.md for all types)
             "errorString" : "-67dB is out of the gain range of -5dB to 50dB" // Human-readable error

@@ -3,6 +3,7 @@
     "messages" :
     [
         {
+            "messageID" : 143052847005, // Unique ID for this message
             "messageType" : "endResponse", // Indicates this is an end response message
         }
     ]

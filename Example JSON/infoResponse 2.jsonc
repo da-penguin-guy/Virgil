@@ -3,6 +3,8 @@
     "messages" :
     [
         {
+            "messageID" : 143052838000, // Unique ID for this message
+            "responseID" : 143052847011, // Unique ID for this message
             "messageType" : "infoResponse", // Indicates this is a info response
             "channelIndex" : -1, // Indicates that this request is for device info, not a specific channel
             "model" : "DeviceModelName",

@@ -1,10 +1,10 @@
-# Virgil Protocol 2.0.0
+# Virgil Protocol 2.1.0
 
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over TCP. It uses mDNS for Virgil Controller and supports real-time parameter control and status monitoring.
 
-While the Virgil Documentation is in progress, virgil version 2.0.0 is finished and will not have any protocol-level changes made. If there are discrepancies in documentation or clarification needed, please create an issue.
+While the Virgil Documentation is in progress, virgil version 2.1.0 is finished and will not have any protocol-level changes made. If there are discrepancies in documentation or clarification needed, please create an issue.
 
-**This is Virgil Protocol 2.0.0**
+**This is Virgil Protocol 2.1.0**
 
 In previous versions of the virgil protocol, devices were categorized in Master/Slave/Server/Client. That no longer exists
 
@@ -555,6 +555,27 @@ These parameters are only present in device information responses (channelIndex 
 
 
 # Message Details
+
+## Message ID
+Every message should contain a unique integer called `messageID`. If the message is in response to another message, you should also include an integer called `responseID` that contains the messageID of the message you are responding to.
+
+### messageID Format
+The messageID must follow a specific 12-digit format: **HHMMSSmmm###**
+
+- **First 9 digits (HHMMSSmmm)**: Timestamp when the message was sent
+  - **HH**: Hour in 24-hour format (00-23)
+  - **MM**: Minute (00-59)  
+  - **SS**: Second (00-59)
+  - **mmm**: Millisecond (000-999)
+- **Last 3 digits (###)**: Incrementing counter (000-999) to ensure uniqueness when multiple messages are sent within the same millisecond
+
+**Example**: `143052847000` represents a message sent at 14:30:52.847 (2:30:52.847 PM) and is the 1st message sent in that millisecond.
+
+It is not recommended that this number is used for anything besides logging, as devices may not have synchronized timestamps, particularly Aux devices that are not connected via Dante
+
+endResponses should not have `responseID`
+
+A statusUpdate should only have a `responseID` if you are sending the message to the device that triggered the statusUpdate. There should be no `responseID` if you are sending it because of continuous parameters
 
 ### Status Update
 A status update can be triggered by 3 events:

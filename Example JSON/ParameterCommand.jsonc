@@ -3,6 +3,7 @@
     "messages" :
     [
         {
+            "messageID" : 143052847015, // Unique ID for this message
             "messageType" : "parameterCommand", // Indicates this is a parameter command
             "channelIndex" : 1, // The index of the channel being modified
             "channelType" : "tx", // Type of channel (tx, rx, or aux)

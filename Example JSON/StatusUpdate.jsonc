@@ -3,6 +3,8 @@
     "messages" :
     [
         {
+            "messageID" : 143052847020, // Unique ID for this message
+            "responseID" : 143052847010, // Only have this when sending to the device that triggered the status update
             "messageType" : "statusUpdate", // Indicates this is a status update
             "channelIndex" : 1, // The index of the channel being updated
             "channelType" : "tx", // Type of channel (tx, rx, or aux)

@@ -3,6 +3,7 @@
     "messages" :
     [
         {
+            "messageID" : 143052847004, // Unique ID for this message
             "messageType" : "channelUnlink", // Indicates this is a channel unlink
 
             "channelIndex" : 0, // The index of the channel of the receiver

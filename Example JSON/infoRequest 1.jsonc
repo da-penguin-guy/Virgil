@@ -3,6 +3,7 @@
     "messages" :
     [
         {
+            "messageID" : 143052847010, // Unique ID for this message
             "messageType" : "infoRequest", // Indicates this is a info request
             "channelIndex" : 1, // The index of the channel being requested
             "channelType" : "tx", // Type of channel (tx, rx, or aux)

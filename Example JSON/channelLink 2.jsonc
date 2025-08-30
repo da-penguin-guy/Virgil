@@ -3,6 +3,7 @@
     "messages" :
     [
         {
+            "messageID" : 143052847001, // Unique ID for this message
             "messageType" : "channelLink", // Indicates this is a channel link
 
             "channelIndex" : 0, // The index of the channel of the receiver
