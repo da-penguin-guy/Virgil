@@ -615,6 +615,7 @@ In case 3, the status update should be sent only to the device that requested it
 - **Continuous Monitoring**: Implement 500ms update intervals for continuous parameters
 - **Network Resilience**: Handle device disconnections and reconnections gracefully
 - **Example Files**: Reference the `Example JSON/` directory for complete message examples
+- **Network Selection**: All Virgil data should be routed through the same way that your devices Dante control network is routed.
 
 ---
 
