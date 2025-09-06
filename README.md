@@ -1,10 +1,10 @@
-# Virgil Protocol 2.1.0
+# Virgil Protocol 2.2.0
 
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over TCP. It uses mDNS for Virgil Controller and supports real-time parameter control and status monitoring.
 
 While the Virgil Documentation is in progress, virgil version 2.1.0 is finished and will not have any protocol-level changes made. If there are discrepancies in documentation or clarification needed, please create an issue.
 
-**This is Virgil Protocol 2.1.0**
+**This is Virgil Protocol 2.2.0**
 
 In previous versions of the virgil protocol, devices were categorized in Master/Slave/Server/Client. That no longer exists
 
@@ -79,15 +79,15 @@ mDNS is only used for Virgil Controller.
 ### Example with example devices
 Device1 has 2 rx and 2 tx, device2 has 2 rx and 2 tx
 
-1. Device1 sends infoRequest with index -1
-2. Device2 sends infoResponse with index -1
+1. Device1 sends infoRequest with channel type "device"
+2. Device2 sends infoResponse with channel type "device"
 3. Device1 sends infoRequest for tx 0 and tx 1
 4. Device2 sends infoResponse for tx 0 and tx 1
 5. Device1 sends channelLink for Device1 rx 0 -> Device2 tx 0 and Device1 rx 1 -> Device2 tx 1
 6. Device2 sends statusUpdate for tx 0 and tx 1 because `linkedChannels` was changed
 7. Device1 sends statusUpdate for rx 0 and rx 1 because `linkedChannels` was changed
-8. Device2 sends infoRequest with index -1
-9. Device1 sends infoResponse with index -1
+8. Device2 sends infoRequest with channel type "device"
+9. Device1 sends infoResponse with channel type "device"
 10. Device2 sends infoRequest for tx 0 and tx 1
 11. Device1 sends infoResponse for tx 0 and tx 1
 12. Device2 sends an endResponse 
@@ -545,7 +545,7 @@ Valid values for the `deviceType` parameter:
 - `computer`
 
 ### Device-Level Parameters
-These parameters are only present in device information responses (channelIndex = -1):
+These parameters are only present in device information responses (channelType = "device"):
 
 - **model**: Device model name 
 - **deviceType**: Device category (string)
@@ -560,7 +560,7 @@ These parameters are only present in device information responses (channelIndex 
 Every message should contain a unique integer called `messageID`. If the message is in response to another message, you should also include an integer called `responseID` that contains the messageID of the message you are responding to.
 
 ### messageID Format
-The messageID must follow a specific 12-digit format: **HHMMSSmmm###**
+The messageID must follow a specific 12-digit format: ****
 
 - **First 9 digits (HHMMSSmmm)**: Timestamp when the message was sent
   - **HH**: Hour in 24-hour format (00-23)
