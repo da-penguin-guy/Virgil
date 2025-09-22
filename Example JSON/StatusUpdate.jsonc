@@ -7,19 +7,19 @@
             "responseID" : 143052847010, // Only have this when sending to the device that triggered the status update
             "messageType" : "statusUpdate", // Indicates this is a status update
             "channelIndex" : 1, // The index of the channel being updated
-            "channelType" : "tx", // Type of channel (tx, rx, or aux)
+            "channelType" : 0, // Type of channel: 0=tx, 1=rx, 2=aux
 
             
             "linkedChannels": [
                 {
                     "deviceName": "ConnectedDevice1",
                     "channelIndex": 0,
-                    "channelType": "rx"
+                    "channelType": 1 // 0=tx, 1=rx, 2=aux
                 },
                 {
                     "deviceName": "ConnectedDevice2",
                     "channelIndex": 1,
-                    "channelType": "rx"
+                    "channelType": 1 // 0=tx, 1=rx, 2=aux
                 }
             ], // Indicates that the connected devices have changed
 

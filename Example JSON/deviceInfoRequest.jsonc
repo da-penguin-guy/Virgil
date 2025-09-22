@@ -4,8 +4,7 @@
     [
         {
             "messageID" : 143052847011, // Unique ID for this message
-            "messageType" : "infoRequest", // Indicates this is a info request
-            "channelType" : "device", // Requesting device info, not channel-specific info
+            "messageType" : "deviceInfoRequest" // Indicates this is a device info request
         }
     ]
 }

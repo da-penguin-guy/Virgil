@@ -1,5 +1,7 @@
 # Virgil Protocol 2.2.0
 
+WIP DO NOT IMPLEMENT
+
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over TCP. It uses mDNS for Virgil Controller and supports real-time parameter control and status monitoring.
 
 While the Virgil Documentation is in progress, virgil version 2.1.0 is finished and will not have any protocol-level changes made. If there are discrepancies in documentation or clarification needed, please create an issue.
@@ -46,11 +48,13 @@ mDNS is only used for Virgil Controller.
 |---------------------|----------------------------------------------------------|---------|
 | parameterCommand    | Used to set or change a parameter on a channel           | TCP     |
 | statusUpdate        | Used to notify devices of a changed parameter            | TCP     |
-| statusRequest       | Used to request a status update                          | TCP     |
+| statusRequest       | Used to request a status update for a channel           | TCP     |
 | channelLink         | Used to represent that 2 channels are linked in dante    | TCP     |
 | channelUnlink       | Used to undo a channelLink                               | TCP     |
-| infoRequest		      | Used to request information on a device/channel          | TCP	   |
-| infoResponse 		    | Used to respond to an infoRequest					               | TCP     |
+| infoRequest		      | Used to request information on a channel                 | TCP	   |
+| infoResponse 		    | Used to respond to an infoRequest for a channel         | TCP     |
+| deviceInfoRequest   | Used to request device-level information                 | TCP     |
+| deviceInfoResponse  | Used to respond to a deviceInfoRequest                   | TCP     |
 | errorResponse       | Used to convey an error				                           | TCP     |
 | subscribeMessage    | Used to tell a device to inform the sender of any parameter changes for a given channel         | TCP     |
 | unsubscribeMessage  | Used to undo a subscribeMessage                          | TCP     |
@@ -61,8 +65,9 @@ mDNS is only used for Virgil Controller.
 ### Connection Establishment
 1. Device connects via TCP to another device's Virgil port
 2. First message should include `transmittingDevice` to identify sender
-3. Devices may exchange `infoRequest`/`infoResponse` messages for discovery
-4. Channel linking occurs via `channelLink` messages
+3. Devices may exchange `deviceInfoRequest`/`deviceInfoResponse` messages for device discovery
+4. Devices may exchange `infoRequest`/`infoResponse` messages for channel discovery
+5. Channel linking occurs via `channelLink` messages
 
 ### Parameter Control Flow
 1. Send `parameterCommand` to change a parameter value
@@ -79,43 +84,51 @@ mDNS is only used for Virgil Controller.
 ### Example with example devices
 Device1 has 2 rx and 2 tx, device2 has 2 rx and 2 tx
 
-1. Device1 sends infoRequest with channel type "device"
-2. Device2 sends infoResponse with channel type "device"
+1. Device1 sends deviceInfoRequest
+2. Device2 sends deviceInfoResponse
 3. Device1 sends infoRequest for tx 0 and tx 1
 4. Device2 sends infoResponse for tx 0 and tx 1
 5. Device1 sends channelLink for Device1 rx 0 -> Device2 tx 0 and Device1 rx 1 -> Device2 tx 1
 6. Device2 sends statusUpdate for tx 0 and tx 1 because `linkedChannels` was changed
 7. Device1 sends statusUpdate for rx 0 and rx 1 because `linkedChannels` was changed
-8. Device2 sends infoRequest with channel type "device"
-9. Device1 sends infoResponse with channel type "device"
+8. Device2 sends deviceInfoRequest
+9. Device1 sends deviceInfoResponse
 10. Device2 sends infoRequest for tx 0 and tx 1
 11. Device1 sends infoResponse for tx 0 and tx 1
 12. Device2 sends an endResponse 
 
 
 # Channel Types
-There are 3 types of channels. They are `tx`, `rx`, and `aux`  
+There are 3 types of channels represented as integers:
 
-`tx` and `rx` channels correspond with Dante transmitting and receiving channels. Every dante channel must have a corresponding Virgil channel  
-For example, if a dante device had 12 transmitting channels and 8 receiving channels, the device would advertise over virgil that it has 12 `tx` channels and 8 `rx` channels.
+| Integer | Channel Type | Description |
+|---------|--------------|-------------|
+| 0       | tx           | Transmit channels (Dante transmitting) |
+| 1       | rx           | Receive channels (Dante receiving) |
+| 2       | aux          | Auxiliary channels (non-Dante accessory channels) |
+
+`tx` (0) and `rx` (1) channels correspond with Dante transmitting and receiving channels. Every dante channel must have a corresponding Virgil channel  
+For example, if a dante device had 12 transmitting channels and 8 receiving channels, the device would advertise over virgil that it has 12 `tx` (0) channels and 8 `rx` (1) channels.
 
 tx/rx channels can be linked together to represent the flow of audio via Dante. For more information, go to [Linking Channels](#linking-channels)  
 
-Aux channels do not have a Dante equivalent. They are instead used for sending simple values to a device (Think an in-wall dial connected to a mixer)  
+Aux channels (2) do not have a Dante equivalent. They are instead used for sending simple values to a device (Think an in-wall dial connected to a mixer)  
 Aux channels can be linked to a device, not another channel. For more information, go to [Linking Channels](#linking-channels)  
 
 Channel indices start at 0
+
+**Note**: Device-level information is handled separately through `deviceInfoRequest` and `deviceInfoResponse` messages, not through channel types.
 
 ## Linking Channels
 Channels are linked together to represent the flow of data via Dante. If channels are subscribed in Dante, they must be linked in virgil
 
 Linking to a channel automatically subscribes each device to its corresponding channel. 
 
-Rx channels can only be linked to Tx channels and vice versa. 
+Rx channels (1) can only be linked to Tx channels (0) and vice versa. 
 
 Either side can initiate the link by sending a channelLink.  
 
-Aux channels are not linked to another channel. They are instead linked to a device. The linking must be initiated by the device not containing the aux channel.
+Aux channels (2) are not linked to another channel. They are instead linked to a device. The linking must be initiated by the device not containing the aux channel.
 
 ## Connecting to aux channels
 Because Aux channels do not exist in dante, we cannot rely on dante's subscriptions to find where channels are.  
@@ -139,12 +152,12 @@ This is an array to account for tx channels being able to be connected to severa
   {
     "deviceName" : "connectedDeviceName",
     "channelIndex" : 0, // The connected channel index
-    "channelType" : "rx"
+    "channelType" : 1 // 0=tx, 1=rx, 2=aux
   },
   {
     "deviceName" : "otherConnectedDevice",
     "channelIndex" : 1, // The connected channel index
-    "channelType" : "rx"
+    "channelType" : 1 // 0=tx, 1=rx, 2=aux
   },
 ]
 ```
@@ -163,19 +176,22 @@ If the channel is an aux channel:
 Each parameter is a JSON object with the following fields:
 
 - `value`: Current parameter value (only field changeable by servers)
-- `dataType`: Data type (`number`, `bool`, `string`, `enum`)
-- `unit` (Required for numbers not readonly): Unit of measurement (e.g., `dB`, `Hz`, `%`)
-- `minValue` (Required for numbers not readonly): Minimum allowed value
-- `maxValue` (Required for numbers not readonly): Maximum allowed value  
-- `precision` (Required for numbers not readonly): Step size
+- `dataType`: Data type (`int`, `float`, `bool`, `string`, `enum`)
+- `unit` (Required for int/float not readonly): Unit of measurement (e.g., `dB`, `Hz`, `%`)
+- `minValue` (Required for int/float not readonly): Minimum allowed value
+- `maxValue` (Required for int/float not readonly): Maximum allowed value  
+- `precision` (Required for int/float not readonly): Step size
 - `readOnly`: If true, parameter cannot be changed
 - `enumValues` (enum only): Array of valid string values
 
 ### Data Type Notes
 
 - **Locked**: Below, I use the word "locked" often. This means if the control of said parameter is disabled for whatever reason. Don't include a parameter that your device doesn't have
+- **Int**: Integer values only. Use for discrete values like channel indices, counts, or settings that don't require decimal precision
+- **Float**: Floating-point values. Use for continuous values that may require decimal precision like precise gain adjustments
+- **JSON Data Types**: Even though JSON types are only considered `number` and not `int` or `float`, virgil requires you to pre-state the data type of your number to make memory allocation easier.
 - **Enum**: Represented as an array of valid string values in `enumValues`
-- **Percentage**: Use `%` as unit with `minValue: 0`, `maxValue: 100`, `dataType: "number"`, and `precision : 1`
+- **Percentage**: Use `%` as unit with `minValue: 0`, `maxValue: 100`, `dataType: "int"` or `"float"`, and appropriate `precision`
 - **Precision**: Values increment from `minValue` by `precision` steps (e.g., precision 3dB, minValue -5dB = -5, -2, 1, 4...)
 
 The formula to check if a value is valid is:
@@ -206,7 +222,7 @@ Example Enum Parameter:
 #### gain (Required)
 Analog gain of the channel (independent of pad)
 - **unit**: dB
-- **dataType**: number
+- **dataType**: float (use int if device only supports whole dB increments)
 - **minValue**: Device-specific minimum gain
 - **maxValue**: Device-specific maximum gain
 - **readOnly**: true if gain is fixed or disabled
@@ -215,21 +231,33 @@ Example:
 ```jsonc
 "gain" : {
   "unit" : "dB",
-  "dataType" : "number",
+  "dataType" : "float",
   "minValue" : -10,
   "maxValue" : 50,
-  "value" : 10,
-  "precision" : 1, // Can be higher or lower, depending on your device's precision. For example, 0.1
+  "value" : 10.5,
+  "precision" : 0.1, // Can be higher or lower, depending on your device's precision
   "readOnly" : false 
 }
 ```  
 
-Alternative example with fixed gain
-
+Alternative example with integer gain:
 ```jsonc
 "gain" : {
   "unit" : "dB",
-  "dataType" : "number",
+  "dataType" : "int",
+  "minValue" : -10,
+  "maxValue" : 50,
+  "value" : 10,
+  "precision" : 1,
+  "readOnly" : false 
+}
+```  
+
+Alternative example with fixed gain:
+```jsonc
+"gain" : {
+  "unit" : "dB",
+  "dataType" : "int",
   "minValue" : 30,
   "maxValue" : 30,
   "precision" : 1,
@@ -254,7 +282,7 @@ Example:
 
 #### padLevel
 The amount enabling the pad lowers the signal
-- **dataType**: number (usually negative)
+- **dataType**: int (usually negative)
 - **unit**: dB
 - **readOnly**: Always True (I guess a variable pad is possible, but I've never heard of a preamp with one. Will update if needed)
 - **Note**: Required if channel has `pad` variable
@@ -262,7 +290,7 @@ The amount enabling the pad lowers the signal
 Example:
 ```jsonc
 "padLevel" : {
-  "dataType" : "number",
+  "dataType" : "int",
   "unit": "dB",
   "value" : -10,
   "readOnly" : true
@@ -272,7 +300,7 @@ Example:
 #### lowcut
 High-pass filter frequency
 - **unit**: hz
-- **dataType**: number
+- **dataType**: int (use float if device supports fractional Hz)
 - **minValue**: Device-specific minimum frequency
 - **maxValue**: Device-specific maximum frequency
 - **precision**: Precision of the frequency selection 
@@ -282,7 +310,7 @@ High-pass filter frequency
 Example:
 ```jsonc
 "lowcut" : {
-  "dataType" : "number",
+  "dataType" : "int",
   "unit" : "hz",
   "minValue" : 0,
   "maxValue" : 150,
@@ -351,8 +379,8 @@ Example:
 
 #### transmitPower
 Transmitter power level (typically for IEM systems)
-- **dataType**: enum/number
-- **unit**: % (only include if dataType is number)
+- **dataType**: enum/int/float
+- **unit**: % (only include if dataType is int or float)
 - **readOnly**: true if transmit power is locked
 
 Example:
@@ -365,10 +393,10 @@ Example:
 }
 ``` 
 
-Example with percentage:
+Example with integer percentage:
 ```jsonc
 "transmitPower" : {
-  "dataType" : "number",
+  "dataType" : "int",
   "unit" : "%",
   "minValue": 0,
   "maxValue": 100,
@@ -378,18 +406,31 @@ Example with percentage:
 }
 ``` 
 
+Example with float percentage:
+```jsonc
+"transmitPower" : {
+  "dataType" : "float",
+  "unit" : "%",
+  "minValue": 0,
+  "maxValue": 100,
+  "precision": 0.1,
+  "value" : 87.5,
+  "readOnly" : false
+}
+``` 
+
 #### squelch
 Squelch threshold (mutes audio/RF below threshold)
 - **unit**: dB or % (device-dependent)
-- **dataType**: number
+- **dataType**: int or float (depending on device precision)
 - **minValue**: Device-specific minimum threshold
 - **maxValue**: Device-specific maximum threshold
 - **readOnly**: true if squelch is locked
 
-Example:
+Example with dB (integer):
 ```jsonc
 "squelch" : {
-  "dataType" : "number",
+  "dataType" : "int",
   "unit" : "dB",
   "minValue": 30, //I'm sorry, I have no clue what the range would be
   "maxValue": 50,
@@ -399,10 +440,10 @@ Example:
 }
 ``` 
 
-Example with percentage:
+Example with percentage (integer):
 ```jsonc
 "squelch" : {
-  "dataType" : "number",
+  "dataType" : "int",
   "unit" : "%",
   "minValue": 0,
   "maxValue": 100,
@@ -449,7 +490,7 @@ These parameters change frequently and require status updates every 500ms
 #### audioLevel
 Audio signal level
 - **unit**: dBFS
-- **dataType**: number
+- **dataType**: float (or int if device only reports whole dB values)
 - **readOnly**: Always true (read-only)
 - **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
 
@@ -458,9 +499,9 @@ audioLevel can be for tx or rx.
 Example:
 ```jsonc
 "audioLevel" : {
-  "dataType" : "number",
+  "dataType" : "float",
   "unit" : "dBFS",
-  "value" : -18,
+  "value" : -18.5,
   "readOnly" : true
 }
 ``` 
@@ -468,24 +509,24 @@ Example:
 #### rfLevel
 RF signal strength
 - **unit**: dB or %
-- **dataType**: number
+- **dataType**: int or float (depending on device precision)
 - **readOnly**: Always true (read-only)
 - **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
 
-Example:
+Example with dB (integer):
 ```jsonc
 "rfLevel" : {
-  "dataType" : "number",
+  "dataType" : "int",
   "unit" : "dB",
   "value" : 40,
   "readOnly" : true
 }
 ``` 
 
-Example with percentage:
+Example with percentage (integer):
 ```jsonc
 "rfLevel" : {
-  "dataType" : "number",
+  "dataType" : "int",
   "unit" : "%",
   "value" : 100,
   "readOnly" : true
@@ -495,14 +536,14 @@ Example with percentage:
 #### batteryLevel
 Connected device battery level
 - **unit**: %
-- **dataType**: number
+- **dataType**: int (or float if device reports fractional percentages)
 - **readOnly**: Always true (read-only)
 - **Note**: Because these are read-only, you don't need to provide precision, minValue, or maxValue
 
 Example:
 ```jsonc
 "batteryLevel" : {
-  "dataType" : "number",
+  "dataType" : "int",
   "unit" : "%",
   "value" : 40,
   "readOnly" : true
@@ -517,9 +558,9 @@ Example:
     {
       "messageType": "statusUpdate",
       "channelIndex": 0,
-      "channelType": "tx",
+      "channelType": 0, // 0=tx, 1=rx, 2=aux
       "audioLevel": {
-        "value": -12
+        "value": -12.5
       },
       "rfLevel": {
         "value": 85
@@ -534,6 +575,8 @@ Example:
 
 # Device Information
 
+Device information is obtained through `deviceInfoRequest` and `deviceInfoResponse` messages. These are separate from channel-level information and status.
+
 ### Device Types
 Valid values for the `deviceType` parameter:
 - `digitalStageBox`
@@ -543,15 +586,17 @@ Valid values for the `deviceType` parameter:
 - `mixer`
 - `dsp`
 - `computer`
+- `controller`
+- `other`
 
 ### Device-Level Parameters
-These parameters are only present in device information responses (channelType = "device"):
+These parameters are only present in device information responses:
 
 - **model**: Device model name 
 - **deviceType**: Device category (string)
 - **virgilVersion**: Protocol version being used (string)
 - **channelCounts**: The counts for each various types of channels
-  - The 3 channel types are `tx`, `rx`, and `aux`
+  - The 3 channel types are 0 (tx), 1 (rx), and 2 (aux)
 
 
 # Message Details
@@ -581,12 +626,12 @@ A statusUpdate should only have a `responseID` if you are sending the message to
 A status update can be triggered by 3 events:
 1. A parameter was changed via `parameterCommand`
 2. Continuous parameters haven't been broadcasted in 500ms
-3. A `statusRequest` was received
+3. A `statusRequest` was received for a channel
 
 In cases 1 and 2, the status update should be sent to all devices subscribed to that channel.
 In case 3, the status update should be sent only to the device that requested it.
 
-**Note**: Status updates only include the values that have changed, not the full parameter structure.
+**Note**: Status updates only include the values that have changed, not the full parameter structure. Status updates are only for channel-level parameters, not device information.
 
 #### Error Types
 - `UnrecognizedCommand`: Unknown message type
@@ -611,7 +656,9 @@ In case 3, the status update should be sent only to the device that requested it
 # Implementation Notes
 
 - **Error Handling**: Always provide clear, user-friendly error messages in `errorString`
-- **Parameter Discovery**: Servers should query device capabilities before attempting to control parameters
+- **Device Discovery**: Use `deviceInfoRequest`/`deviceInfoResponse` for device-level information discovery
+- **Channel Discovery**: Use `infoRequest`/`infoResponse` for channel-level parameter discovery  
+- **Status Monitoring**: Use `statusRequest`/`statusUpdate` for channel parameter monitoring
 - **Continuous Monitoring**: Implement 500ms update intervals for continuous parameters
 - **Network Resilience**: Handle device disconnections and reconnections gracefully
 - **Example Files**: Reference the `Example JSON/` directory for complete message examples

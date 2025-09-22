@@ -3,30 +3,25 @@
     "messages" :
     [
         {
-            "messageID" : 143052850000, // Unique ID for this message
-            "responseID" : 143052847010, // Unique ID for this message
+            "messageID" : 143052838000, // Unique ID for this message
+            "responseID" : 143052847011, // Unique ID for this message
             "messageType" : "infoResponse", // Indicates this is a info response
             "channelIndex" : 1, // The index of the channel being requested
-            "channelType" : "tx", // Type of channel (tx, rx, or aux)
+            "channelType" : 0, // Type of channel: 0=tx, 1=rx, 2=aux
             "linkedChannels": [
                 {
                     "deviceName": "ConnectedDevice1",
                     "channelIndex": 0,
-                    "channelType": "rx"
-                },
-                {
-                    "deviceName": "ConnectedDevice2",
-                    "channelIndex": 1,
-                    "channelType": "rx"
+                    "channelType": 1 // 0=tx, 1=rx, 2=aux
                 }
             ],
             "gain" : {
                 "unit" : "dB",
-                "dataType" : "number",
+                "dataType" : "float",
                 "minValue" : -10,
                 "maxValue" : 50,
-                "value" : 10,
-                "precision" : 1, // Can be higher or lower, depending on your device's precision. For example, 0.1
+                "value" : 10.5,
+                "precision" : 0.1, // Can be higher or lower, depending on your device's precision
                 "readOnly" : false 
             },
             "pad" : {
@@ -35,7 +30,7 @@
                 "readOnly" : false,
             },
             "padLevel" : {
-                "dataType" : "number",
+                "dataType" : "int",
                 "unit": "dB",
                 "value" : -10,
                 "readOnly" : true,
@@ -46,9 +41,9 @@
                 "readOnly" : false,
             },
             "audioLevel" : {
-                "dataType" : "number",
+                "dataType" : "float",
                 "unit" : "dBFS",
-                "value" : -18,
+                "value" : -18.5,
                 "readOnly" : true,
             }
         }

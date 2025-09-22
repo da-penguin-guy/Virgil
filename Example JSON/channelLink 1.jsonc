@@ -7,10 +7,10 @@
             "messageType" : "channelLink", // Indicates this is a channel link
 
             "sendingChannelIndex" : 1,    //Index of the channel of the sender
-            "sendingChannelType" : "tx",    //Type of channel (tx, rx, or aux)
+            "sendingChannelType" : 0,    //Type of channel: 0=tx, 1=rx, 2=aux
 
             "channelIndex" : 1, // The index of the channel of the receiver
-            "channelType" : "rx", // Type of channel (tx, rx, or aux)
+            "channelType" : 1, // Type of channel: 0=tx, 1=rx, 2=aux
         }
     ]
 }

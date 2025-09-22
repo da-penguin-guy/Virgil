@@ -1,0 +1,20 @@
+{
+    "transmittingDevice": "DanteDeviceName", // The device sending the command
+    "messages" :
+    [
+        {
+            "messageID" : 143052838000, // Unique ID for this message
+            "responseID" : 143052847011, // Unique ID for this message
+            "messageType" : "deviceInfoResponse", // Indicates this is a device info response
+            "model" : "DeviceModelName",
+            "virgilVersion" : "2.2.0",
+            "deviceType" : "digitalStageBox", // Type of device
+            "channelCounts" :
+            [
+                8, // Number of transmit channels
+                8, // Number of receive channels
+                4 // Number of auxiliary channels
+            ]
+        }
+    ]
+}

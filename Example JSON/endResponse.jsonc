@@ -4,6 +4,7 @@
     [
         {
             "messageID" : 143052847005, // Unique ID for this message
+            "responseID" : 143052847011, // Unique ID for the message this is responding to
             "messageType" : "endResponse", // Indicates this is an end response message
         }
     ]
