@@ -1,10 +1,9 @@
-# Virgil Protocol 2.2.0
+# Virgil Protocol 2.3.0
 
-WIP DO NOT IMPLEMENT
 
 Virgil is a network protocol for controlling audio devices using JSON-formatted messages over TCP. It uses mDNS for Virgil Controller and supports real-time parameter control and status monitoring.
 
-While the Virgil Documentation is in progress, virgil version 2.1.0 is finished and will not have any protocol-level changes made. If there are discrepancies in documentation or clarification needed, please create an issue.
+While the Virgil Documentation is in progress, virgil version 2.3.0 is finished and will not have any protocol-level changes made. If there are discrepancies in documentation or clarification needed, please create an issue.
 
 **This is Virgil Protocol 2.2.0**
 
@@ -480,6 +479,21 @@ Example:
 "subDevice" : {
   "dataType" : "string",
   "value" : "handheld",
+  "readOnly" : true
+}
+``` 
+
+#### correspondingAux
+The index of an aux channel that contains additional parameters that may not be outlined in the spec. 
+- **dataType**: int
+- **readOnly**: Always true (read-only)
+- **Notes**: Value must be between 0 and the amount of aux channels - 1
+
+Example:
+```jsonc
+"correspondingAux" : {
+  "dataType" : "int",
+  "value" : 1,
   "readOnly" : true
 }
 ``` 
